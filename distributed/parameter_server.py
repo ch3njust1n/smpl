@@ -269,11 +269,10 @@ class ParameterServer(object):
                 pass
 
             # update model gradients
-            model.add_batched_coordinates(grad_queue['gradients'])
-            avg_grads = [g/(self.clique+1) for g in model.get_gradients()]
+            model.add_batched_coordinates(grad_queue['gradients'], avg=self.clique+1)
             
-            # send to all peers
-            # MISSING CODE
+            # update gradient queue so that self.share_grad() can reply with averaged gradients
+            grad_queue['master_grad'] = model.get_gradients(tolist=True)
         
         else:
             send_to = master
@@ -287,7 +286,12 @@ class ParameterServer(object):
 
     '''
     Public API 
-    Averages gradients across party.
+    Receive gradients from peers and reply with averaged gradients
+
+    Inputs:  sess_id (str)    Session id
+             peer    (dict)   Dictionary representing the sender
+             gradients (list) Nested list of coordinate-gradient pairs
+    Outputs:
     '''
     def share_grad(self, sess_id, peer, gradients):
         sess = json.loads(self.cache.get(sess_id))
@@ -295,7 +299,19 @@ class ParameterServer(object):
         grad_queue['peers'].append(peer['alias'])
         grad_queue['gradients'].extend(gradients)
 
+        while 'master_grad' not in grad_queue:
+            pass
 
+        return grad_queue['master_grad']
+
+
+    '''
+    Internal API
+
+    Inputs:  sess_id (str) Session id
+             nn      (NeuralNetwork) Neural Network
+    Outputs:
+    '''
     def train(self, sess_id, nn):
         '''
         - Hyper-parallelize with Hogwild!

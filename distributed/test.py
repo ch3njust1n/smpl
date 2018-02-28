@@ -27,15 +27,19 @@ class TestNet(nn.Module):
 		self.fc1 = nn.Linear(2,1)
 
 	def add_coordinates(self, index, coords):
-		params = [p for p in self.parameters()]
+		params = [p.data for p in self.parameters()]
 
 		cd = []
 		gd = []
-		p = params[index].data
+		p = params[index]
 
 		for c in coords:
-			cd.append(c[0][1:])
-			gd.append(c[1]+1)
+			point = c[0][1:]
+			if point in cd:
+				gd[cd.index(point)] += c[1]
+			else:
+				cd.append(point)
+				gd.append(c[1])
 
 		i = torch.LongTensor(cd)
 		v = torch.FloatTensor(gd)
@@ -46,11 +50,13 @@ class TestNet(nn.Module):
 			s.append(1)
 
 		grads = torch.sparse.FloatTensor(i.t(), v, torch.Size(s)).to_dense()
-		params[index].data = p + grads
+		print 'param[%d] before: '%index
+		print p
+		p += grads
+		print 'param[%d] after: '%index
+		print p
 
 	def add_batched_coordinates(self, coords):
-		print 'add_batched_coordinates (coords):'
-		print coords
 		num_procs = mp.cpu_count()
 		self.share_memory()
 		processes = []
@@ -73,7 +79,7 @@ class TestNet(nn.Module):
 
 		# update parameters in parallel
 		for k in params_coords.keys():
-			self.add_coordinates(k, params_coords[k])
+			# self.add_coordinates(k, params_coords[k])
 			p = mp.Process(target=self.add_coordinates, args=(k, params_coords[k],))
 			p.start()
 			processes.append(p)
@@ -96,13 +102,12 @@ for t in network.parameters():
 	kp.append(t.data.float())
 
 cache.set('test', pm)
-# print 'parameters:'
-# print pm
-print 'kp:'
-print kp
 params = pt.largest_k(kp, k=3)
 print '\nlargest_k:'
 print params
+print '\nextended:'
+params.extend(params)
+print params
 
-print '\nadd_coordinates:'
+print '\nadd_batched_coordinates:'
 print network.add_batched_coordinates(params)

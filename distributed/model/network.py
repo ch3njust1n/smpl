@@ -35,11 +35,11 @@ class Network(nn.Module):
     '''
     def get_parameters(self, tolist=False, reference=False, grads=False):
         if tolist:
-            return [x.grads.data.tolist() if grads else x.data.tolist() for x in self.parameters()]
+            return [x.grad.data.tolist() if grads else x.data.tolist() for x in self.parameters()]
         else:
             if reference:
                 # tensors in list are passed by reference
-                return [x.grads.data if grads else x.data for x in self.parameters()]
+                return [x.grad.data if grads else x.data for x in self.parameters()]
             else:
                 parameters = []
 
@@ -62,13 +62,13 @@ class Network(nn.Module):
             if type(params[0]) == torch.nn.parameter.Parameter:
                 for update, model in zip(params, self.parameters()):
                     if gradients:
-                        model.grads.data = update.data
+                        model.grad.data = update.data
                     else:
                         model.data = update.data
             elif type(params[0]) == torch.FloatTensor:
                 for update, model in zip(params, self.parameters()):
                     if gradients:
-                        model.grads.data = update
+                        model.grad.data = update
                     else:
                         model.data = update
             elif type(params[0]) == list:
@@ -90,9 +90,9 @@ class Network(nn.Module):
     '''
     def get_gradients(self, tolist=False):
         if tolist:
-            return [x.grads.data.tolist() for x in self.parameters()]
+            return [x.grad.data.tolist() for x in self.parameters()]
         else:  
-            return [torch.zeros(x.grads.data.size()).copy_(x.grads.data) for x in self.parameters()]
+            return [torch.zeros(x.grad.data.size()).copy_(x.grad.data) for x in self.parameters()]
 
 
     '''
@@ -102,7 +102,7 @@ class Network(nn.Module):
     def get_sparse_gradients(self):
         grads = []
         for x in self.parameters():
-            grads.extend(pt.largest_k(x.grads.data))
+            grads.extend(pt.largest_k(x.grad.data))
         return grads
 
 
@@ -115,7 +115,7 @@ class Network(nn.Module):
             coords (list) Nested list containing lists of coordinate gradient pairs
                     e.g. [[[0, 0, 0], -0.4013189971446991], [[0, 0, 1], 0.4981425702571869]]
     '''
-    def add_coordinates(self, index, coords):
+    def add_coordinates(self, index, coords, avg=1):
         
         # get corresponding parameters
         params = [p for p in self.parameters()]
@@ -127,8 +127,10 @@ class Network(nn.Module):
         # extract coordinate-gradient pairs and combine gradients at the same coordiante
         for c in coords:
             point = c[0][1:]
+            c[1] /= avg
+            
             if point in cd:
-                gd[cd.index(point)] += c[1]
+                gd[cd.index(point)] += (c[1])
             else:
                 cd.append(point)
                 gd.append(c[1])
@@ -144,7 +146,7 @@ class Network(nn.Module):
 
         # update parameters with gradients at particular coordinates
         grads = torch.sparse.FloatTensor(i.t(), v, torch.Size(s)).to_dense()
-        params[index].grads.data += grads
+        params[index].grad.data += grads
 
 
     '''
@@ -154,7 +156,7 @@ class Network(nn.Module):
     Input: coords (list) Nested list of lists containing coordinate-gradient pairs from parameter_tools.largest_k()
             e.g. [[[0, 0, 0], 0.23776602745056152], [[0, 0, 1], -0.09021180123090744], [[1, 0, 0], 0.10222198069095612]]
     '''
-    def add_batched_coordinates(self, coords):
+    def add_batched_coordinates(self, coords, avg=1):
         num_procs = mp.cpu_count()
         self.share_memory()
         processes = []
@@ -172,8 +174,7 @@ class Network(nn.Module):
 
         # update parameters in parallel
         for k in params_coords.keys():
-            self.add_coordinates(k, params_coords[k])
-            p = mp.Process(target=self.add_coordinates, args=(k, params_coords[k],))
+            p = mp.Process(target=self.add_coordinates, args=(k, params_coords[k], avg,))
             p.start()
             processes.append(p)
 
