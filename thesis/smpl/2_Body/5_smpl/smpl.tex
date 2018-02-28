@@ -1,0 +1,48 @@
+\chapter{Defense Against Model Inversion}
+\label{chapter:body}
+\thispagestyle{myheadings}
+
+% set this to the location of the figures for this chapter. it may
+% also want to be ../Figures/2_Body/ or something. make sure that
+% it has a trailing directory separator (i.e., '/')!
+\graphicspath{{2_Body/Figures/}}
+
+%%%%%%%%%%%%%%%
+% Section 5.1 %
+%%%%%%%%%%%%%%%
+\section{Secure Multi-Party Learning}
+
+In our work, we propose using the generative adversarial network training framework as a proxy for secure collaborative learning - a technique that we refer to as Secure Multi-Party Learning by Proxy. 
+
+% Important Questions:
+% - How much information is leaked during training in the clear?
+% - How much information is leaked using our technique?
+% -- What assumptions can be made prior to training and is anything learned during or after training?
+% Is having the unencrypted model enough for model inversion?
+
+\textbf{SMPL Algorithm}
+Initiating party executes:
+<pseudo code here>
+Receiving parties execute:
+<pseudo code here>
+
+\subsection{Secure Multi-Party Learning with Discriminative Models}
+
+\subsection{Secure Multi-Party Learning with Generative Models}
+
+\subsection{Assumptions}
+We assume that all parties sample from the same data-generating distribution and as in the original GAN framework the true data-generating distribution is unknown. We also assume that all parties know all factors of variation for their particular domain of data e.g. for image data: lighting, rotation, translation, depth, aperture, etc.
+
+\subsection{Security Definition}
+\textbf{Semi-honest Adversary:}
+We assume that the adversary is willing to abide by the protocol but will also try to learn anything it can without breaking the protocol.
+
+\textbf{White-box Attack:}
+We assume that the adversary will have access to the parameters of the network and be able to make infinite queries to the finally trained model and the model at intermediate phases of training.
+
+\subsection{Defense Against Model Inversion}
+\paragraph{Reconstruction}
+
+\paragraph{Attribution}
+
+\paragraph{Intractability}

@@ -1,0 +1,126 @@
+%==========================================================================%
+% MAIN PREAMBLE 
+%==========================================================================%
+\documentclass[12pt,letterpaper]{report}          % Single-sided printing for the library
+%\documentclass[12pt,twoside]{report} % Double-sided printing
+\usepackage[intlimits]{amsmath}
+\usepackage{amsfonts,amssymb}
+\DeclareSymbolFontAlphabet{\mathbb}{AMSb}
+%\usepackage{natbib}
+\usepackage{apalike}
+\usepackage{float}
+\usepackage[bf]{caption}       
+\setcaptionmargin{0.5in}
+\usepackage{fancyhdr}
+%\usepackage{fancyheadings}
+\usepackage{fancybox}
+\usepackage{ifthen}
+\usepackage{bu_ece_thesis}
+\usepackage{url}
+\usepackage{lscape,afterpage}
+\usepackage{xspace}
+\usepackage{epstopdf} 
+\usepackage{subfig}
+%==========================================================================%Notes:
+%%% graphicx and pdf creation
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{appendix}
+%\usepackage{psfrag}
+%\DeclareGraphicsExtensions{.eps}   % extension for included graphics
+%\usepackage{thumbpdf}              % thumbnails for ps2pdf
+%\usepackage[ps2pdf,                % hyper-references for ps2pdf
+%bookmarks=true,%                   % generate bookmarks ...
+%bookmarksnumbered=true,%           % ... with numbers
+%hypertexnames=false,%              % needed for correct links to figures !!!
+%breaklinks=true,%                  % breaks lines, but links are very small
+%linkbordercolor={0 0 1},%          % blue frames around links
+%pdfborder={0 0 112.0}]{hyperref}%  % border-width of frames 
+%                                   % will be multiplied with 0.009 by ps2pdf
+%\hypersetup{
+%  pdfauthor   = {Justin Chen <chenjus@bu.edu>},
+%  pdftitle    = {dissertation.pdf},
+%  pdfsubject  = {masters dissertations},
+%  pdfkeywords = {computer science, deep learning, type inference, programming languages},
+%  pdfcreator  = {LaTeX with hyperref package},
+%  pdfproducer = {dvips + ps2pdf}
+%}
+%==========================================================================%
+% customized commands can be placed here
+%\newcommand{\figref}[1]{Figure~\ref{#1}}
+%\newcommand{\chapref}[1]{Chapter~\ref{#1}}
+%\newcommand{\latex}{\LaTeX\xspace}
+%==========================================================================%
+
+%==========================================================================%
+% BEGIN
+%==========================================================================%
+\begin{document}
+
+% The preliminary pages
+\include{0_Prelim/prelim}        
+\cleardoublepage
+
+% -------------------------------------
+% CHAPTER 1: INTRODUCTION
+% -------------------------------------
+\include{1_Intro/intro}
+\cleardoublepage
+
+% -------------------------------------
+% CHAPTER 2: BACKGROUND AND RELATED WORK
+% -------------------------------------
+\include{2_Body/2_background/2-1_deeplearning}
+\include{2_Body/2_background/2-2_training}
+\include{2_Body/2_background/2-3_secureml}
+\include{2_Body/2_background/2-4_smpc}
+\include{2_Body/2_background/2-5_related}
+
+% -------------------------------------
+% CHAPTER 3: PRELIMINARY IDEAS
+% -------------------------------------
+\include{2_Body/3_ideas/ideas}
+
+% -------------------------------------
+% CHAPTER 4: P2P Distributed Training
+% -------------------------------------
+\include{2_Body/4_p2p/p2p}
+
+% -------------------------------------
+% CHAPTER 5: SMPL
+% -------------------------------------
+\include{2_Body/5_smpl/smpl}
+
+% -------------------------------------
+% CHAPTER 6: results
+% -------------------------------------
+\include{2_Body/6_results/results}
+
+\cleardoublepage
+
+% -------------------------------------
+% CHAPTER X: CONCLUSION
+% -------------------------------------
+\include{3_Conclusion/conclusion}
+\cleardoublepage
+
+%\appendix
+\begin{appendices}
+\include{Appendix/Appendix}
+\end{appendices}
+%==========================================================================%
+% Bibliography
+\newpage
+\singlespace
+\bibliographystyle{apalike}
+
+% each subdirectory can have its own BiBTeX file
+\bibliography{thesis}
+\cleardoublepage
+
+%==========================================================================%
+% Curriculum Vitae
+\include{0_Prelim/cv} 
+
+%==========================================================================%
+\end{document}

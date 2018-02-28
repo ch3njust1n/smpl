@@ -1,0 +1,13 @@
+\chapter{Introduction}
+\label{chapter:Introduction}
+\thispagestyle{myheadings}
+
+\section{Security and Machine Learning}
+\label{sec:history}
+
+We consider the problem where there are multiple parties that are interested in training their own neural networks and would like to leverage the effects of everyone pooling their data together without revealing samples in their individual datasets. Previous work either provide very weak security guarantees using differential privacy or utilize homomorphic encryption resulting in methods that are too slow to use in practice. In our work, we argue that by the nature that learning algorithms must learn (disambiguate patterns from noise), no encryption scheme can provide strong security guarantees. Because of this, we must always assume that the adversary must have access some portion of the data-generating distribution and knows a priori the factors of variation of the data and can discern real samples with at best 0.5 chance. We propose a technique and proof for guaranteeing security against both attribution and reconstruction.
+
+Collecting and curating labeled data can be very expensive. One reasonable solution is to pool labeled data from various parties. However, data could be sensitive or damaging if revealed openly, which discourages most data holders from cooperating with each other. For example, if there are multiple hospitals with datasets all formatted similarly that all wanted to train a network for cancer cell detection, sharing the data could help all parties increase the accuracy of their own algorithms. But naively sharing patient information could compromise individuals with certain conditions and could be illegal. How then can we create a training framework that allows parties to benefit from aggregate data without revealing information about their individual datasets? Additionally, how can we develop a generalized training framework to accommodate dynamically shaped data.
+
+\section{Democratizing Machine Intelligence}
+<Blurb on importance of democracy 

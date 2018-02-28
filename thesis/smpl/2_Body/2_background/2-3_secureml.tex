@@ -1,0 +1,38 @@
+\thispagestyle{myheadings}
+
+% set this to the location of the figures for this chapter. it may
+% also want to be ../Figures/2_Body/ or something. make sure that
+% it has a trailing directory separator (i.e., '/')!
+\graphicspath{{2_Body/Figures/}}
+
+%%%%%%%%%%%%%%%
+% Section 2.3 %
+%%%%%%%%%%%%%%%
+\section{Secure Machine Learning}
+Define different scenarios (white-box, black-box) and protecting during training versus inference with concrete examples and definitions of adversaries here
+
+\subsection{Threat Models}
+\cite{abadi2017protection}
+\paragraph{White Box}
+\paragraph{Black Box}
+\paragraph{Training}
+\paragraph{Inference}
+
+\subsubsection{Membership Inference Attack}
+
+\subsection{Model Extraction Attack}
+Important to explain this because essentially any black-box attack can become a white-box attack so must assume that setting. This can apply to either training or inference as long as the adversary can make queries on the model.
+
+% Notes:
+% 1. Should also cite Google's TPU paper explaining that model inversion is even easier on vanilla nn and that 69% of Google's nn services use vanilla nn
+% 2. Need reduction from NP-complete problem to this thing that we think is also hard
+\subsection{Model Inversion Attack}
+Inherently that means that the algorithm gains information about the data. Formally that means a learning algorithm learns a function $f\in \mathcal{F}$ (a class of functions F that approximates a mapping). Learning algorithms are generally one of the two types: discriminative  or generative. Discriminative, which are the most widely used algorithms in practice, output a label (class) given an input. They learn to discriminate between classes of objects. The probabilistic description of discriminative models is $P(Y\vert X)$. On the other hand, generative models learn to generate data from  a given a training set of data. The probabilistic description of generative models is $P(X\vert Y)$. Understanding the difference between these two classes allows us to further understand, explore, and exploit possible attack surfaces provided by machine learning training frameworks and the models themselves.
+
+In our work, we study focus on deep neural networks, and a general and prevalent type of attack known as model inversion. Model inversion attacks ask the following: given a particular label $\mathit{y}$, can we construct an input $\mathit{x}$ that maps to $\mathit{y}$. The idea is to be able to infer information about the original dataset that was used to train the model $\mathcal{M}$. This can be framed using maximum a posteriori estimation. Given the output of the learning algorithm, we would like to change the input such that the model outputs something similar to the output that we chose - our target class. We can do this be starting with a random vector, feeding it through the network and observing the output. We continuously update this target vector and compare its output to our target and stop when the difference between the outputs is negligible. This results in a potential input that maps to our target class. If the learning algorithm learns a one-to-one mapping as in situations when the network overfits (memorizes the training set), then this would produce an input $\hat{\mathit{x}}$ that is close or exactly the original input from the training set used to learn the model. However, in practice, discriminative learning algorithms learn a many-to-one mapping e.g. many images of cats to the single label “cat” and so model inversions attacks can only produce blurry reconstructions of images. One might observe that there are natural properties of particular types of data that prevent perfect reconstruction which we will explain more about in section X. Although, it is clear that model inversion attacks apply to any discriminative model and are effective given that the learning algorithm is sufficiently trained, model inversion attacks have not been demonstrated on generative learning algorithms. This is the key insight to our current training technique. The key insight is that model inversion attacks assume the adversary knows the output of the target model and has unlimited ability to query the trained model. Generative models take a label and output an input from the data-generating distribution. It outputs the x. Because the adversary must provide the model’s output, in the case of generative models, that would mean that the adversary must provide the x to reconstruct the label y. But given that the objective of model inversion attacks is to construct approximations of samples from the original training set, there’s no reason to even perform model inversion because the adversary is assumed to be providing the network’s output, which in the case of generative models is the input that the adversary wants to learn. By way of contradiction, model inversion attacks do not apply to generative models by the definition of generative models.
+
+However, there has been work demonstrating, under strong assumptions that do not necessarily hold in practice, using a generative adversarial networks to perform a specific type of model inversion attack in the collaborative learning framework. <insert summary of paper here>
+The assumptions required for this technique to work do not hold in practice. This work inspired us to explore the possibility of using generative adversarial networks to defend against model inversion attacks.
+
+\subsection{Defense through Decentralization}
+\subsubsection{Federated Learning}
