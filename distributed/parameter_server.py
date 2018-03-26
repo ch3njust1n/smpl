@@ -110,8 +110,6 @@ class ParameterServer(object):
         self.me = utils.get_me(self.roster, eth=self.eth)
         self.pc = ParameterChannel(self.peers, logger=self.logger)
 
-        self.logger.info('this is me: '+str(self.me))
-
         # Load dataset
         self.dataset = data.SMPLData(self.data, cuda=self.cuda, shares=len(self.roster), index=self.me['id'])
 
@@ -229,8 +227,6 @@ class ParameterServer(object):
     Output: response (str)
     '''
     def route(self, msg):
-        # sender_ip = msg['addr'][0]
-        # sender_port = msg['addr'][1]
 
         content = msg['content']
         api = content['api']
@@ -269,7 +265,6 @@ class ParameterServer(object):
         connected = False
         sess_id = 0
 
-        self.logger.info('init hyperedge')
         # establish clique
         while not connected:
             connected, sess_id = self.init_session()
@@ -284,6 +279,7 @@ class ParameterServer(object):
         nn = NeuralNetwork()
 
         # pull current best parameters from parameter server
+        self.logger.info('updating nn params')
         best = json.loads(self.cache.get('best'))
         nn.update_parameters(best['parameters'])
 
@@ -467,16 +463,12 @@ class ParameterServer(object):
         peers = sorted(peers, key=lambda x: x['accuracy'], reverse=True)
         best = peers[0]
 
-        self.logger.info('ps.init_session() peers:{}'.format(peers))
-
         # Synchronize parameters of model with best validation accuracy
         resp = []
         for send_to in peers:
             Process(target=self.pc.send, 
                     args=({"api": "synchronize_parameters", "args": [sess_id, best, peers]}, 
                            send_to['host'], send_to['port'],)).start()
-
-        self.logger.info('ps.init_session() synchronized')
             
         # request parameters from member with highest accuracy
         model = {}
@@ -542,13 +534,11 @@ class ParameterServer(object):
     def get_unique_clique(self, peers):
         possible_cliques = list(combinations(peers, self.clique))
         shuffle(possible_cliques)
-        self.logger.info('ps.get_unique_clique() possible_cliques: {}'.format(str(possible_cliques)))
         # [({u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1}, 
         #   {u'alias': u'smpl', u'host': u'192.168.0.12', u'port': 9888, u'id': 0})]
 
         clique = []
         active = self.active_sessions()
-        self.logger.info('ps.get_unique_clique() active: {}'.format(str(active)))
         #  [('sess1343003545191620262', '{"peers": [], "master": {"alias": "smpl-1", "host": "192.168.0.10", 
         #                                 "port": 9888, "id": 1}, "id": "sess1343003545191620262"}')]
 
@@ -563,10 +553,8 @@ class ParameterServer(object):
             clique = possible_cliques.pop(0)
 
             if hash(str(clique)) not in sess_hash:
-                self.logger.info('ps.get_unique_clique() list(clique): {}'.format(str(list(clique))))
                 return list(clique)
 
-        self.logger.info('ps.get_unique_clique() clique: {}'.format(str(clique)))
         return clique
 
 
@@ -582,8 +570,6 @@ class ParameterServer(object):
         unique = self.get_unique_clique(self.peers)
         peers = []
 
-        self.logger.info('ps.establish_clique: {}'.format(str(unique)))
-
         # Note: Parallelize this!!!
         for send_to in unique:
 
@@ -595,8 +581,6 @@ class ParameterServer(object):
 
             if len(peers) >= self.clique:
                 break
-
-        self.logger.info('ps.establish_clique() peers: {}'.format(str(peers)))
 
         return peers[:self.clique]
 
@@ -610,7 +594,6 @@ class ParameterServer(object):
     '''
     def establish_session(self, sess_id, master):
         record = json.loads(self.cache.get('best'))
-        self.logger.info('ps.establish_session: {}\n{}'.format(str(sess_id), str(master)))
         
         me = dict(self.me)
         me['accuracy'] = record['accuracy']
@@ -631,23 +614,17 @@ class ParameterServer(object):
             accuracy (float)
     '''
     def get_parameters(self, sess_id):
-        self.logger.info('ps.get_parameters sess_id:{}'.format(sess_id))
 
         model = json.loads(self.cache.get(sess_id))
         
         if model == None:
-            self.logger.info('ps.get_parameters mode==None')
             return [], -1
-
-        self.logger.info('ps.get_parameters mode not eq None')
 
         # CALL DEEP GRADIENT COMPRESSION HERE
         if False:#self.sparsity > 0:
-            self.logger.info('ps.get_parameters sparsifying parameters')
             model = json.loads(model)
             # return pt.largest_k(model['parameters'], self.sparsity), model['accuracy']
         else:
-            self.logger.info('ps.get_parameters skip sparsifying')
             return model['parameters'], model['accuracy']
 
 
