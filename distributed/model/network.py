@@ -10,10 +10,10 @@
 	Hariri Institute for Computing and 
     Computational Sciences & Engineering
 '''
-import sys, os
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
+# import sys, os
+# sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
-import parameter_tools as pt
+from .. import parameter_tools as pt
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
@@ -185,8 +185,8 @@ class Network(nn.Module):
 class TestNet(Network):
     def __init__(self):
         super(Network, self).__init__()
-        self.fc1 = nn.Linear(3,2)
-        self.fc2 = nn.Linear(2,1)
+        self.fc1 = nn.Linear(784,200)
+        self.fc2 = nn.Linear(200,47)
 
 
 class NeuralNetwork(Network):
@@ -222,9 +222,8 @@ class NeuralNetwork(Network):
         x = self.do2(F.sigmoid(self.fc2(x)))
         x = self.do3(F.sigmoid(self.fc3(x)))
         x = self.do4(F.sigmoid(self.fc4(x)))
-        x = F.sigmoid(self.fc5(x))
 
-        return F.log_softmax(x)
+        return F.log_softmax(self.fc5(x))
 
 
 class Convolution(nn.Module):

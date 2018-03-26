@@ -1,1 +1,8 @@
+.*
+!/.gitignore
 *.pyc
+data/mnist
+dev/
+logs/
+distributed/test.py
+distributed/model/test.py

@@ -10,33 +10,62 @@
     Computational Sciences & Engineering
 '''
 
-import socket, logging, json
+import socket, json
 from multiprocessing import Process, Manager
-
+from threading import Thread
+from time import sleep
 
 # Channel for sending to and receiving gradients from MPC server
 class ParameterChannel(object):
-    def __init__(self, peers):
-        logging.basicConfig(filename='gradient.log', level=logging.DEBUG)
+
+    def __init__(self, peers, logger=None):
+        self.logger = logger
         self.peers = peers
         self.connections = {}
-        self.setup()
+        Thread(target=self.setup).start()
+        # 0=off, 1=on
+        self.status = 1
+
+
+    '''
+    Connect to a single peer
+
+    Input: peer (dict) Dictionary contains address information
+    '''
+    def connect(self, peer):
+        address = '{}:{}'.format(peer['host'], peer['port'])
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # sock.settimeout(0.1)
+
+        self.logger.info('contacting: {}'.format(address))
+        while address not in self.connections:
+
+            try:
+                sock.connect((peer['host'], peer['port']))
+                self.connections[address] = sock
+            except Exception as sock_err:
+                self.logger.info('Error: pc sock_err:{}'.format(sock_err))
+
+                if (sock_err.errno == socket.errno.ECONNREFUSED):
+                    sleep(1)
+                    self.logger.info('Error: pc.setup() {}, addr: {}'.format(str(sock_err), address))
+
+        self.logger.info('sucess {} connected'.format(address))
 
 
     '''
     Initial setup for connecting to all peers
     '''
     def setup(self):
+        queue = []
+        
         for p in self.peers:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                sock.settimeout(0.1)
-                sock.connect((p['host'], p['port']))
-                address = p['host']+':'+p['port']
-                self.connections[address] = sock
-            except socket.error as sock_err:
-                if (sock_err.errno == socket.errno.ECONNREFUSED):
-                    logging.info(sock_err)
+            t = Thread(target=self.connect, args=(p,))
+            t.start()
+            queue.append(t)
+
+        for t in queue:
+            t.join()
 
 
     '''
@@ -53,44 +82,60 @@ class ParameterChannel(object):
     '''
     Use to communicate with peer via TCP
 
-    Input:  peer (int) Integer indicating peer
+    Input:  host (string) IP address
+            port (int) Port number
             msg (dict) API function call and parameters
     Output: ok (bool)
             content (dict)
     '''
-    def send(self, peer, msg):
+    def send(self, host, port, msg):
         ok = False
+        content = ''
 
         try:
             resp = ''
-            # Send filename containing gradient to Go server
-            self.sock.sendall(self.format(msg) + '\n')
+            addr = '{}:{}'.format(host, port)
+
+            self.logger.info('pc.send() addr:{}'.format(addr))
+
+            sock = self.connections[addr]
+
+            msg = self.format(msg) + '\n'
+            sock.sendall(msg)
+
+            self.logger.info('pc.send() sent!')
             
             # Look for the response
-            resp = self.sock.recv(4096).split('::')
+            resp = sock.recv(4096).split('::')
+
             expected = int(resp[0])
+            
+            self.logger.info('pc.send() expected:{}'.format(expected))
+
             content = resp[1]
+
             received = len(content)
             remaining = expected - received
 
+            self.logger.info('pc.send() looking')
+
             while len(content) < expected:
-                content += self.sock.recv(min(expected - len(content), 4096))
+                content += sock.recv(min(expected - len(content), 4096))
                 received = len(content)
+
+            self.logger.info('pc.send() gotit!')
 
             # Received entire message
             ok = received == expected
 
-        return ok, json.loads(content)
+            content = json.loads(content)
 
+            self.logger.info('pc.send() ok:{}'.format(ok))
 
-    '''
-    Remove peer's socket
-    '''
-    def remove(self, peer):
-        sock = self.connections[peer]
-        sock.shutdown(socket.SHUT_RDWR)
-        sock.close()
-        del self.connections[peer]
+        except Exception as e:
+            self.logger.info('Error: pc.send() '+str(e))
+
+        return ok, content
 
 
     '''
@@ -98,6 +143,14 @@ class ParameterChannel(object):
     '''
     def teardown(self):
         for sock in self.connections:
-            self.remove(peer)
+            sock = self.connections[peer]
+            sock.shutdown(socket.SHUT_RDWR)
+            sock.close()
 
-        logging.info('closed all connections')
+            if len(self.connections) == 0:
+                self.status = 0
+                self.teardown()
+
+        self.connections.clear()
+
+        self.logger.info('closed all connections')

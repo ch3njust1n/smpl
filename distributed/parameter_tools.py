@@ -29,7 +29,7 @@ Input: data (list)
 Output: (torch.FloatTensor)
 '''
 def list_to_tensor(data, cuda=False):
-    return to_cuda(torch.FloatTensor(x), cuda)
+    return to_cuda(torch.FloatTensor(data), cuda)
 
 
 '''

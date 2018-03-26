@@ -8,7 +8,9 @@
     Computational Sciences & Engineering
 '''
 
-import os, pickle, datetime, json, codecs, glob, torch, math
+import os, pickle, datetime, json, codecs, glob, torch, math 
+# network:
+import socket, fcntl, struct
 import numpy as np
 from subprocess import PIPE, Popen
 
@@ -29,9 +31,69 @@ def save_json(save_dir, data):
     return filename
 
 
+'''
+Load JSON object from a saved file
+
+Input   file_path (string) Path to JSON file
+Output: (list) Loaded JSON
+'''
 def load_json(file_path):
     with open(file_path, 'rb') as file:
         return json.load(file)
+
+
+'''
+Get the IP address of the current machine
+Source:
+https://raspberrypi.stackexchange.com/questions/6714/how-to-get-the-raspberry-pis-ip-address-for-ssh
+'''
+def get_ip_address(ifname):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(fcntl.ioctl(
+        s.fileno(),
+        0x8915,  # SIOCGIFADDR
+        struct.pack('256s', ifname[:15])
+    )[20:24])
+
+
+'''
+Determine which configuration information corresponds to this machine.
+All nodes on the MOC use device ens3 for network communication.
+This will raise an exception if the party.json configuration file is missing information
+on this machine.
+
+Input:  config (list) List from party.json
+        eth (string) Ethernet interface
+Output: dictionary containing identity of this machine
+'''
+def get_me(config, eth='ens3'):
+    ip = get_ip_address(eth)
+    for conf in config:
+        if conf['host'] == ip:
+            return conf
+    raise Exception('Error: party.json is missing this host\'s information')
+
+
+'''
+Check if the party configuration file is correct
+
+Input: roster (list)
+'''
+def check_party(roster):
+    info = {"alias": [], "addr": []}
+
+    for p in roster:
+        if p['alias'] in info['alias']:
+            raise Exception('Aliases must be unique')
+        else:
+            info['alias'].append(p['alias'])
+
+        addr = '{}:{}'.format(p['host'], p['port'])
+        
+        if addr in info['addr']:
+            raise Exception('Address (host, port) must be unique')
+        else:
+            info['addr'].append(addr)
 
 
 def save_pt(data, path):

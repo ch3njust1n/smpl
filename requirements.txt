@@ -14,3 +14,4 @@ torch==0.2.0.post1
 torchvision==0.1.8
 wheel==0.24.0
 tqdm==4.15.0
+redis==2.10.6

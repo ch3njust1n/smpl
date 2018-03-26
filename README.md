@@ -8,12 +8,27 @@ Hyper-parallel distributed training for deep neural networks
 
 - Install PyTorch ([pytorch.org](http://pytorch.org))
 - `pip install -r requirements.txt`
+- `sudo apt install libgl1-mesa-glx`
 
 #### Basic usage
 
 Be sure to set the correct IP address for all party members before running.
 ```bash
 $ python smpl.py
+```
+
+
+#### Setup
+```
+Make smpl.py executable on all peers
+chmod +x smpl.py
+
+Check that `which python` matches the first line of `smpl.py`
+
+cd bash/init
+bash start.sh
+
+Run `bash start.sh` from one of the nodes
 ```
 
 

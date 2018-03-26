@@ -11,11 +11,12 @@ from __future__ import division
 
 import numpy as np
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 import matplotlib.animation as animation
 from matplotlib import style
-from torch import utils
+from torch import utils, stack, LongTensor
 from torchvision import datasets, transforms
-import logging, os
+import os, multiprocessing as mp
 
 
 '''
@@ -25,38 +26,97 @@ and get its own DataLoader instance so that the user only has to worry about def
 in train.Train.
 '''
 class SMPLData(object):
-    def __init__(self, cuda):
-        logging.basicConfig(filename='gradient.log', level=logging.DEBUG)
-
-        # Could implement a selection mechanism for datasets later
-        self.train, self.test = self.load_mnist()
-
-
-    def load_data(self, batch_size, num_workers=1, pin_memory=True, shuffle=True):
-        kwargs = {'num_workers': num_workers, 'pin_memory': pin_memory} if self.cuda else {}
-
-        train = utils.data.DataLoader(self.train, batch_size=batch_size, shuffle=shuffle, **kwargs)
-        test = utils.data.DataLoader(self.test, batch_size=batch_size, shuffle=shuffle, **kwargs)
-
-        return train, test
+    def __init__(self, dataset, cuda=False, shares=0, index=0, logger=None):
+        self.logger = logger
+        self.dataset = dataset
+        self.cuda = cuda
+        self.shares = shares
+        self.index = index
+        self.train, self.test = self.select(dataset) #these should be iterators
 
 
-    def load_mnist(self):
-        train = datasets.MNIST('../data', train=True, download=True,
+    def select(self, dataset):
+        if dataset.lower() == 'mnist':
+            return self.load_mnist()
+        elif dataset.lower() == 'emnist':
+            return self.load_emnist()
+
+
+    def load_data(self, batch_size, num_workers=mp.cpu_count(), pin_memory=True, shuffle=True):
+        # kwargs = {'num_workers': num_workers, 'pin_memory': pin_memory} if self.cuda else {}
+
+        # train = utils.data.DataLoader(self.train, batch_size=batch_size, shuffle=shuffle, **kwargs)
+        # test = utils.data.DataLoader(self.test, batch_size=batch_size, shuffle=shuffle, **kwargs)
+
+        # return train, test
+        pass
+
+
+    '''
+    Extract appropriate partition of data
+    e.g. If the data is paritioned into 32 samples each, then peer.id=0 gets samples [0,31]
+    '''
+    def partition(self, data):
+        size = int(len(data)/self.shares)
+        self.start_indx = self.index * size
+        share_size = size + 1 if self.start_indx + size + 1 == len(data) else size
+        self.end_indx = self.start_indx + size
+
+        samples = []
+        labels = []
+
+        for i in range(self.start_indx, self.end_indx):
+            samples.append(data[i][0])
+            labels.append(data[i][1])
+
+        return stack(samples), LongTensor(labels)
+
+
+    def load_emnist(self):
+        train = datasets.EMNIST('../data/emnist', train=True, download=True,
                         transform=transforms.Compose([
                            transforms.ToTensor(),
                            transforms.Normalize((0.1307,), (0.3081,))]))
 
-        test = datasets.MNIST('../data', train=False, 
+        test = datasets.EMNIST('../data/emnist', train=False, download=True,
                         transform=transforms.Compose([
                             transforms.ToTensor(),
                             transforms.Normalize((0.1307,), (0.3081,))]))
 
-        return train, test
+        return self.partition(train), self.partition(test)
+
+
+    def load_mnist(self):
+        train = datasets.MNIST('../data/mnist', train=True, download=True,
+                        transform=transforms.Compose([
+                           transforms.ToTensor(),
+                           transforms.Normalize((0.1307,), (0.3081,))]))
+
+        test = datasets.MNIST('../data/mnist', train=False, download=True,
+                        transform=transforms.Compose([
+                            transforms.ToTensor(),
+                            transforms.Normalize((0.1307,), (0.3081,))]))
+
+        return self.partition(train), self.partition(test)
 
 
 def get_cmap(n, name='hsv'):
     return plt.cm.get_cmap(name, n)
+
+
+'''
+Visualize a batch of MNIST digits
+Input: samples (torch.FloatTensor) Tensor of batch of MNIST images
+       targets (torch.FloatTensor) Tensor of batch of MNIST labels
+'''
+def visualize(samples, labels):
+    # first index is sample in batch
+    batch_size = len(samples)
+    for s in range(batch_size):
+        pixels = samples[s][0].numpy().reshape((28, 28))
+        plt.title('Label: {label}'.format(label=label[s]))
+        plt.imshow(pixels, cmap='gray')
+        plt.show()
 
 
 def visualize_2D(x_data, y_data=[], title='', x_label='', y_label=''):

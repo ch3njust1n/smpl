@@ -12,11 +12,10 @@
 import sys
 sys.path.insert(0, 'data')
 
-import os, torch, logging, utils, json
+import os, torch, utils, json
 import datetime as dt
 import parameter_tools as pt
 import torch.optim as optim
-import torch.nn.functional as F
 from torch.autograd import Variable
 from numpy import sum, zeros, unravel_index
 from itertools import count
@@ -29,7 +28,7 @@ torch.manual_seed(1)
 
 class Train(object):
 
-    def __init__(self, sess_id, network, epochs, lr, dataset, cache, parallel, average):
+    def __init__(self, sess_id, smpl_id, network, epochs, sync_delay, lr, dataset, cache, parallel, average):
         # Init global parameter state variables
         self.network = network
         self.accuracy = 0.0
@@ -38,6 +37,7 @@ class Train(object):
 
         # Training settings
         self.sess_id = sess_id
+        self.smpl_id = smpl_id
         self.mpc = False
         self.save = 'model/save'
         self.log_interval = 100
@@ -50,12 +50,11 @@ class Train(object):
         self.scale = 16
         self.optimizer = self.network.optimizer(self.network.parameters(), lr=self.lr)
         self.parallel = parallel
+        self.sync_delay = sync_delay
 
         # Load data
         self.train_loader, self.test_loader = dataset.load_data(self.batch_size)
         self.dataset_size = len(self.train_loader)
-
-        logging.basicConfig(filename='gradient.log', level=logging.DEBUG)
 
 
     '''
@@ -86,15 +85,16 @@ class Train(object):
                 loss.backward()
                 losses.append(loss.data.tolist()[0])
 
-                # Average gradients across peers
-                average(self.sess_id, self.network)
+                # Delay parameter synchronization and validation every self.sync_delay epochs
+                if epoch % self.sync_delay == 0:
+                    # Average gradients across peers
+                    self.average(self.sess_id, self.network)
+                    self.optimizer.step()
 
-                self.optimizer.step()
-
-                if batch_idx % self.log_interval == 0:
-                    print('{}\tTrain Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                        pid, epoch, batch_idx * batch_size, total,
-                        100. * batch_idx / len(self.train_loader), loss.data[0]))
+                    if batch_idx % self.log_interval == 0:
+                        print('{}\tTrain Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                            pid, epoch, batch_idx * batch_size, total,
+                            100. * batch_idx / len(self.train_loader), loss.data[0]))
 
             self.accuracy = self.validate()
             validations.append(self.accuracy)
@@ -109,6 +109,10 @@ class Train(object):
                 sess['val'] = validations
                 sess['losses'] = losses
                 self.cache.set(self.sess_id, json.dumps(sess))
+
+        ##  TODO: Calculate model rank here 
+        #   rank = val_rank(acc/<aggregate val set size>)+train_rank(acc/<aggregate train set size>)
+        #   if rank > best[]
 
 
     '''
