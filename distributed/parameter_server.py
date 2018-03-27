@@ -20,7 +20,7 @@ from time import sleep, time
 from train import Train
 from datetime import datetime
 from itertools import combinations
-from model.network import NeuralNetwork
+from model.network import NeuralNetwork, TestNeuron
 import parameter_tools as pt
 import os, torch, json, redis, socket, logging, utils, test, train, data
 
@@ -37,6 +37,7 @@ class ParameterServer(object):
         
         self.host           = args.host
         self.port           = args.port
+        self.workers        = (cpu_count()-args.clique)/(args.clique)
         self.clique         = args.clique-1
         self.cuda           = args.cuda
         self.data           = args.data
@@ -44,19 +45,19 @@ class ParameterServer(object):
         self.epochs         = args.epochs
         self.eth            = args.eth
         self.epsilon        = args.epsilon
-        self.global_epochs  = args.global_epochs
         self.log_freq       = args.log_freq
-        self.lr             = args.lr
         self.max            = args.max
         self.name           = args.name
         self.parallel       = args.local_parallel
         self.party          = args.party
         self.save           = args.save
-        self.scale          = args.scale
         self.seed           = args.seed
         self.sparsity       = args.sparsity
         self.strategy       = args.strategy
-        self.sync_delay     = args.sync_delay
+        self.train_path     = os.path.join(args.data, 'train')
+        self.train_rank     = args.train_rank
+        self.val_path       = os.path.join(args.data, 'val')
+        self.val_rank       = args.val_rank
         self.ep_count       = 0
         self.lock           = Lock()
 
@@ -83,7 +84,7 @@ class ParameterServer(object):
         # Track best set of parameters. Equivalent of "global" params in central server model.
         # Stash this server's info
         self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "rank": 100,
-                                           "parameters": [x.data.tolist() for x in NeuralNetwork().parameters()]}))
+                                           "parameters": [x.data.tolist() for x in TestNeuron().parameters()]}))
         self.cache.set('server', json.dumps({"clique": self.clique, "host": self.host, "port": self.port}))
 
         # Establish ports for receiving API calls
@@ -276,35 +277,25 @@ class ParameterServer(object):
         self.grad_queue[sess_id] = {"peers":[], "gradients":[]}
 
         # each session should create its own model
-        nn = NeuralNetwork()
+        nn = TestNeuron() #NeuralNetwork()
 
-        # pull current best parameters from parameter server
+        # pull current best parameters from parameter server to intialize model
         self.logger.info('updating nn params')
         best = json.loads(self.cache.get('best'))
         nn.update_parameters(best['parameters'])
 
+        self.logger.info('training')
         self.train(sess_id, nn)
 
-        # if using divergent exploration, then need to update the network parameters
-        if self.parallel == 'dex':
-            nn.update_parameters(self.cache.get(sess_id)['parameters'])
+        ## LEFTOFF: checking 
 
-        ### CHCECKING ###
-        avg_grad = self.share_gradient(sess_id)
-
-        # validate model and validate
-        nn.update_parameters(self.nn.get_parameters(), avg_grad)
-
-        ### CHCECKING ###
-        # update best model on parameter server
+        # compare recently trained hyperedge model with current best
+        self.logger.info('update best model')
         self.update_model(sess_id)
 
         # clean up parameter cache and gradient queue
         self.cache.delete(sess_id)
         del self.grad_queue[sess_id]
-
-        self.pc.send(send_to['host'], send_to['port'], 
-                                    {"api": "share_grad", "args": [sess_id, self.me, gradients]})
 
         # increment total successful training epoches
         self.lock.acquire()
@@ -323,36 +314,39 @@ class ParameterServer(object):
         '''
         - Hyper-parallelize with Hogwild!
         - Pass sess_id to Train so it can retrieve the session object from redis
-        - Can define a more specific training schedule by passing self.epochs to Train 
-          default is 5 epochs of local training before synchronizing gradients
         '''
+        self.logger.info('training...')
+
         if self.parallel == 'hogwild':
             nn.share_memory()
 
+        # DistributedTrainer constructor parameters
+        conf = (sess_id, nn, self.allreduce, self.train_path, self.val_path, 
+                1, self.cache, self.cuda, self.parallel, self.seed, False, True)
         processes = []
 
-        for c in range(cpu_count()):
-
-            # annealed learning rate
-            lr = 10**(-c - self.lr) if self.parallel == 'dex' else self.lr
-            t = Train(sess_id, self.me['id'], nn, self.epochs, self.sync_delay, lr, self.dataset, self.cache, 
-                      self.parallel, self.average_gradients)
-            p = Process(target=t.train)
+        for w in range(self.workers):
+            p = Process(target=Train(conf).train)
             p.start()
             processes.append(p)
 
+        # Locally synchronous
         for p in processes:
             p.join()
 
 
     '''
     Internal API
-    Average gradients, distribute to other peers, and update gradients in model
+    Average gradients, distribute to other peers, and update gradients in model.
+    This is only called by the Train.train() at the end of local training.
 
     Input:  sess_id (str)
             model   (NeuralNet)
+            totla   (int) Total number of samples used to train. Required 
+                          to calculate the weighted contribution of this 
+                          peer's gradients
     '''
-    def average_gradients(self, sess_id, model):
+    def allreduce(self, sess_id, model, total):
         gradients = model.get_sparse_gradients(tolist=True)
         sess = json.loads(self.cache.get(sess_id))
         master = sess['master']
@@ -486,16 +480,29 @@ class ParameterServer(object):
 
 
     '''
+    Get rank (float) of session model [0,100] where 
+    100 is the lowest score and 0 is the highest
+
+    Input:  sess_id (string) Session id
+    '''
+    def rank(self, sess_id):
+        model = json.loads(self.cache.get(sess_id))
+        model['rank'] = model['acc']*(self.val_rank/model['val_size'] + self.train_rank/model['train_size'])
+        
+
+    '''
     Internal API
     Update the accuracy and parameters of a session
 
-    Input: sess_id (str), parameters (str), accuracy (float)
+    Input: sess_id    (str)    Session id
+           parameters (tensor) Model parameters
+           accuracy   (float)  Corresponding model accuracy
     '''
-    def update_model(self, sess_id):
+    def update_model(self, sess_id, parameters, accuracy):
         model = json.loads(self.cache.get(sess_id))
 
         if sess_id == 'best':
-            if model['accuracy'] < accuracy:
+            if self.rank(sess_id) > model['rank']:
                 model['parameters'] = parameters
                 model['accuracy'] = accuracy
                 self.cache.set(sess_id, json.dumps(model))

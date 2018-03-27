@@ -12,7 +12,7 @@
 import sys
 sys.path.insert(0, 'data')
 
-import os, torch, utils, json
+import os, utils, json
 import datetime as dt
 import parameter_tools as pt
 import torch.optim as optim
@@ -21,98 +21,72 @@ from numpy import sum, zeros, unravel_index
 from itertools import count
 from random import random
 from math import ceil
+from trainer import DistributedTrainer
 
 
-torch.manual_seed(1)
+class Train(DistributedTrainer):
 
+    '''
+    Train is a user-defined class that describes the behavior of during hyperedge training.
 
-class Train(object):
-
-    def __init__(self, sess_id, smpl_id, network, epochs, sync_delay, lr, dataset, cache, parallel, average):
-        # Init global parameter state variables
-        self.network = network
-        self.accuracy = 0.0
-        self.cache = cache
-        self.average = average
+    Input: config (dict) Dictionary containing training settings that's passed to the super class
+    '''
+    def __init__(self, config):
+        super(Train, self).__init__(*config)
 
         # Training settings
-        self.sess_id = sess_id
-        self.smpl_id = smpl_id
-        self.mpc = False
-        self.save = 'model/save'
-        self.log_interval = 100
-        self.epochs = epochs
-        self.iterations = 3000
         self.batch_size = 64
+        self.epochs = 5
+        self.log_interval = 100
+        self.lr = 1e-3
         self.momentum = 0.9
-        self.lr = lr
-        self.sparsity = 0.25
-        self.scale = 16
         self.optimizer = self.network.optimizer(self.network.parameters(), lr=self.lr)
-        self.parallel = parallel
-        self.sync_delay = sync_delay
-
-        # Load data
-        self.train_loader, self.test_loader = dataset.load_data(self.batch_size)
-        self.dataset_size = len(self.train_loader)
+        self.save = 'model/save'
+        self.load_data()
 
 
     '''
-    Output: network  (Network) - reference to model
-            validate (list) - list of validation accuracies
-            losses   (list) - list of training losses
+    Implements one hyperedge training session
+
+    Save the following outputs to the the ParameterServer cache
+    network  (Network) Reference to model
+    validate (list)    List of validation accuracies
+    losses   (list)    List of training losses
     '''            
     def train(self):
-        losses = []
-        validations = []
-        pid = 0
-
+        pid = os.getpid()
         pt.to_cuda(self.network, cuda=self.cuda)
-        total = len(self.train_loader.dataset)
-        sess = json.loads(self.cache.get(self.sess_id))
 
-        for epoch in range(1, self.epochs + 1):
-            pid = os.getpid()
+        for ep in range(0, self.epochs):
             self.network.train()
 
             for batch_idx, (data, target) in enumerate(self.train_loader):
                 batch_size = len(data)
+                self.total += batch_size
                 data = Variable(pt.to_cuda(data, cuda=self.cuda))
                 target = Variable(pt.to_cuda(target, cuda=self.cuda))
 
                 self.optimizer.zero_grad()
                 loss = self.network.loss(self.network(data), target)
                 loss.backward()
-                losses.append(loss.data.tolist()[0])
+                self.losses.append(loss.data.tolist()[0])
 
-                # Delay parameter synchronization and validation every self.sync_delay epochs
-                if epoch % self.sync_delay == 0:
-                    # Average gradients across peers
-                    self.average(self.sess_id, self.network)
-                    self.optimizer.step()
-
+                if ep+1 % self.epoch == 0:
                     if batch_idx % self.log_interval == 0:
                         print('{}\tTrain Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                            pid, epoch, batch_idx * batch_size, total,
-                            100. * batch_idx / len(self.train_loader), loss.data[0]))
+                            pid, ep, batch_idx * batch_size, self.train_size,
+                            100. * batch_idx / self.train_size, loss.data[0]))
 
-            self.accuracy = self.validate()
-            validations.append(self.accuracy)
+                if ep == self.epochs-1 and batch_idx == self.train_size-1:
+                    # Average gradients across peers
+                    # and only take one gradient step per hyperedge
+                    self.allreduce()
+                    self.optimizer.step()
 
-        # Divergent Exploration parallelization strategy
-        if self.parallel == 'dex':           
-            # should create a local best and just replace it if it's better than the existing one else 
-            # exit and discard computation
-            if sess['val'][-1] < validations[-1]:
-                sess['parameters'] = self.network.get_parameters(tolist=True)
-                sess['pid'] = pid
-                sess['val'] = validations
-                sess['losses'] = losses
-                self.cache.set(self.sess_id, json.dumps(sess))
+                self.validations.append(self.validate())
 
-        ##  TODO: Calculate model rank here 
-        #   rank = val_rank(acc/<aggregate val set size>)+train_rank(acc/<aggregate train set size>)
-        #   if rank > best[]
+        # save hyperedge
+        self.cache()
 
 
     '''
@@ -124,7 +98,7 @@ class Train(object):
         correct = 0
         acc_diff = 1.0
 
-        for data, target in self.test_loader:
+        for data, target in self.val_loader:
             data = pt.to_cuda(data, cuda=self.cuda)
             target = pt.to_cuda(target, cuda=self.cuda)
             data, target = Variable(data, volatile=True), Variable(target)
@@ -134,7 +108,7 @@ class Train(object):
             pred = output.data.max(1)[1]  # get the index of the max log-probability
             correct += pred.eq(target.data).cpu().sum()
 
-        total = len(self.test_loader) * self.batch_size if task == 'avg' else len(self.test_loader.dataset)
+        total = self.val_size * self.batch_size if task == 'avg' else self.val_size
         test_loss /= total
         acc = 100. * correct / total
         print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct, total, acc))

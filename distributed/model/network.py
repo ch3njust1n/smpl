@@ -30,7 +30,9 @@ class Network(nn.Module):
     '''
     Gather either the network parameters or gradients into the specified format
 
-    Input: tolist (bool), reference (bool), grads (bool)
+    Input: tolist (bool, optional)
+           reference (bool, optional)
+           grads (bool, optional)
     Output: parameters/gradients (list)
     '''
     def get_parameters(self, tolist=False, reference=False, grads=False):
@@ -51,8 +53,10 @@ class Network(nn.Module):
 
 
     '''
-    Assumes consistent architectures
-    Input: params (list) - list of lists or a list of tensors
+    Updates this network's parameters. Assumes consistent architectures.
+
+    Input: params    (list) - list of lists or a list of tensors
+           gradients (bool, optional)
     '''
     def update_parameters(self, params, gradients=False):
         if type(params) != list:
@@ -84,8 +88,8 @@ class Network(nn.Module):
     '''
     Returns network gradients
 
-    Input: tolist (bool) If true, convert gradients to a nested list
-           spares (bool) If true, sparsify gradients 
+    Input:  tolist (bool, optional) If true, convert gradients to a nested list
+            spares (bool) If true, sparsify gradients 
     Output: (list) List of gradients
     '''
     def get_gradients(self, tolist=False):
@@ -114,6 +118,7 @@ class Network(nn.Module):
                     e.g. 0 
             coords (list) Nested list containing lists of coordinate gradient pairs
                     e.g. [[[0, 0, 0], -0.4013189971446991], [[0, 0, 1], 0.4981425702571869]]
+            avg (int, optional)
     '''
     def add_coordinates(self, index, coords, avg=1):
         
@@ -155,6 +160,7 @@ class Network(nn.Module):
 
     Input: coords (list) Nested list of lists containing coordinate-gradient pairs from parameter_tools.largest_k()
             e.g. [[[0, 0, 0], 0.23776602745056152], [[0, 0, 1], -0.09021180123090744], [[1, 0, 0], 0.10222198069095612]]
+           avg (int, optional)
     '''
     def add_batched_coordinates(self, coords, avg=1):
         num_procs = mp.cpu_count()
@@ -182,11 +188,15 @@ class Network(nn.Module):
             p.join()
 
 
-class TestNet(Network):
+class TestNeuron(Network):
     def __init__(self):
         super(Network, self).__init__()
-        self.fc1 = nn.Linear(784,200)
-        self.fc2 = nn.Linear(200,47)
+        self.fc1 = nn.Linear(1,2)
+
+
+    def forward(self, x):
+        x = x.view(-1, 2)
+        return self.fc1(x)
 
 
 class NeuralNetwork(Network):

@@ -15,7 +15,8 @@ import numpy as np
 '''
 Converts tensor to a CUDA tensor
 
-Input: tensor (PyTorch tensor)
+Input:  tensor (torch.Tensor)
+        cuda (bool, optional)
 Output: (torch.cuda.FloatTensor)
 '''
 def to_cuda(tensor, cuda=False):
@@ -25,7 +26,8 @@ def to_cuda(tensor, cuda=False):
 '''
 Converts a single nested list representing a matrix to a PyTorch FloatTensor
 
-Input: data (list)
+Input:  data (list)
+        cuda (bool, optional)
 Output: (torch.FloatTensor)
 '''
 def list_to_tensor(data, cuda=False):
@@ -57,9 +59,9 @@ def param_delta(self, original, updated):
 Extracts the largest k values across all tensors in the given list
 
 Input: data    (list) List of PyTorch FloatTensors
-       k       (numeric) Value indicating amount of parameters to keep
-       percent (bool) Indicates if k is a percent or an integer
-       zeros   (bool) If False, ignores all parameters equal to zero
+       k       (numeric, optional) Value indicating amount of parameters to keep
+       percent (bool, optional) Indicates if k is a percent or an integer
+       zeros   (bool, optional) If False, ignores all parameters equal to zero
 
 Output: (list) List of lists containing coordinates-parameter pairs
         e.g. [[[0, 0, 0], -0.43671706318855286], [[0, 0, 1], -0.4151779115200043], [[1, 0, 0], 0.19337968528270721]]

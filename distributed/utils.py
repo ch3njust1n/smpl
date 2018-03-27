@@ -63,7 +63,7 @@ This will raise an exception if the party.json configuration file is missing inf
 on this machine.
 
 Input:  config (list) List from party.json
-        eth (string) Ethernet interface
+        eth (string, optional) Ethernet interface
 Output: dictionary containing identity of this machine
 '''
 def get_me(config, eth='ens3'):
