@@ -60,7 +60,7 @@ def get_ip_address(ifname):
 Determine which configuration information corresponds to this machine.
 All nodes on the MOC use device ens3 for network communication.
 This will raise an exception if the party.json configuration file is missing information
-on this machine.
+on this machine. Removes this machine from the list.
 
 Input:  config (list) List from party.json
         eth (string, optional) Ethernet interface
@@ -68,9 +68,10 @@ Output: dictionary containing identity of this machine
 '''
 def get_me(config, eth='ens3'):
     ip = get_ip_address(eth)
-    for conf in config:
+    me = {}
+    for i, conf in enumerate(config):
         if conf['host'] == ip:
-            return conf
+            return dict(config.pop(i))
     raise Exception('Error: party.json is missing this host\'s information')
 
 

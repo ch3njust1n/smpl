@@ -58,7 +58,7 @@ def param_delta(self, original, updated):
 '''
 Extracts the largest k values across all tensors in the given list
 
-Input: data    (list) List of PyTorch FloatTensors
+Input: tensors (list) List of PyTorch FloatTensors
        k       (numeric, optional) Value indicating amount of parameters to keep
        percent (bool, optional) Indicates if k is a percent or an integer
        zeros   (bool, optional) If False, ignores all parameters equal to zero
@@ -66,7 +66,7 @@ Input: data    (list) List of PyTorch FloatTensors
 Output: (list) List of lists containing coordinates-parameter pairs
         e.g. [[[0, 0, 0], -0.43671706318855286], [[0, 0, 1], -0.4151779115200043], [[1, 0, 0], 0.19337968528270721]]
 '''
-def largest_k(tensors, k=0, percent=True, zeros=True):
+def largest_k(tensors, k=1, percent=True, zeros=True):
     # flatten all tensors into vectors and then concat and find top-k
     flat = []
     dims = []

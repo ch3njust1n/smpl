@@ -22,9 +22,9 @@ class ParameterChannel(object):
         self.logger = logger
         self.peers = peers
         self.connections = {}
-        Thread(target=self.setup).start()
-        # 0=off, 1=on
         self.status = 1
+        self.setup_tries = 10
+        self.setup()
 
 
     '''
@@ -36,9 +36,12 @@ class ParameterChannel(object):
         address = '{}:{}'.format(peer['host'], peer['port'])
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # sock.settimeout(0.1)
+        attempts = 0
 
         self.logger.info('contacting: {}'.format(address))
         while address not in self.connections:
+
+            # if attempts == self.setup_tries: break
 
             try:
                 sock.connect((peer['host'], peer['port']))
@@ -49,6 +52,7 @@ class ParameterChannel(object):
                 if (sock_err.errno == socket.errno.ECONNREFUSED):
                     sleep(1)
                     self.logger.info('Error: pc.setup() {}, addr: {}'.format(str(sock_err), address))
+                    attempts += 1
 
         self.logger.info('sucess {} connected'.format(address))
 
@@ -136,6 +140,16 @@ class ParameterChannel(object):
             self.logger.info('Error: pc.send() '+str(e))
 
         return ok, content
+
+
+    '''
+    Remove a particular peer from the active connections list
+    '''
+    def remove(self, peer):
+        sock = self.connections[peer]
+        sock.close()
+        del self.connections[peer]
+        self.logger.info('closed socket {}'.format(peer))
 
 
     '''

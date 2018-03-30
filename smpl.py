@@ -34,8 +34,8 @@ def main():
                         random set model during parametere synchronization. (default: 0.3)')
     parser.add_argument('--eth', type=str, default='ens3', help='Peers\' ethernet interface (default: ens3)')
     parser.add_argument('--flush', '-f', type=str2bool, default=True, help='Clear all parameters from previous sessions')
-    parser.add_argument('--local_parallel', '-l', type=local_parallel, default='sgd', 
-                        help='Hogwild!, Divergent Exploration, or SGD')
+    parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
+                        help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
     parser.add_argument('--lr', '-r', type=int, default=1e-3, help='Learning rate e.g i = 10^(-i)')
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training')
     parser.add_argument('--max', '-m', default=cpu_count(), help='Maximum number of simultaneous cliques')
@@ -43,7 +43,7 @@ def main():
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file.')
     parser.add_argument('--save', '-s', type=str, default='model/save', 
                         help='Directory to save trained model parameters to')
-    parser.add_argument('--seed', type=int, default=1, help='Random seed for dev only!')
+    parser.add_argument('--seed', type=int, default=-1, help='Random seed for dev only!')
     parser.add_argument('--sparsity', type=percent, default=0.0, help='Parameter sharing sparsification level (default: 0.0)')
     parser.add_argument('--strategy', type=strategy, default='rand', help='Clique formation strategy')
     parser.add_argument('--train_rank', type=percent, default=0.8, help='Training set scale factor for model rank. \

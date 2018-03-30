@@ -14,17 +14,17 @@
 # sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
 from .. import parameter_tools as pt
-import torch
+from torch import FloatTensor, LongTensor, zeros, stack, sparse, Size
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torch.multiprocessing as mp
+from torch.multiprocessing import Process, cpu_count
 
 
 class Network(nn.Module):
     def __init__(self):
-        self.network = None
+        self.optimizer = optim.SGD
 
 
     '''
@@ -47,7 +47,7 @@ class Network(nn.Module):
 
                 for x in self.parameters():
                     params = x.grad.data if grads else x.data
-                    parameters.append(torch.zeros(params.size()).copy_(params))
+                    parameters.append(zeros(params.size()).copy_(params))
 
                 return parameters
 
@@ -63,13 +63,13 @@ class Network(nn.Module):
             raise Exeception('InvalidTypeException: Expected a list of lists or a list of torch.FloatTensors')
 
         if len(params) > 0:
-            if type(params[0]) == torch.nn.parameter.Parameter:
+            if type(params[0]) == nn.parameter.Parameter:
                 for update, model in zip(params, self.parameters()):
                     if gradients:
                         model.grad.data = update.data
                     else:
                         model.data = update.data
-            elif type(params[0]) == torch.FloatTensor:
+            elif type(params[0]) == FloatTensor:
                 for update, model in zip(params, self.parameters()):
                     if gradients:
                         model.grad.data = update
@@ -92,11 +92,33 @@ class Network(nn.Module):
             spares (bool) If true, sparsify gradients 
     Output: (list) List of gradients
     '''
-    def get_gradients(self, tolist=False):
+    def gradients(self, tolist=False):
         if tolist:
             return [x.grad.data.tolist() for x in self.parameters()]
         else:  
-            return [torch.zeros(x.grad.data.size()).copy_(x.grad.data) for x in self.parameters()]
+            return [zeros(x.grad.data.size()).copy_(x.grad.data) for x in self.parameters()]
+
+
+    '''
+    Take the difference between the parameters in this network and a given network. 
+    The given network should be an older version of this network.
+
+    Input:  network  Parameters, which can be in the form of a Network object, list of tensors, or nested
+                     list of lists
+    Output: gradient A list of tensors representing the difference between the network parameters
+    '''
+    def multistep_grad(self, network, sparsify=False):
+        # MAY NEED TO MAKE b IN EACH OF THESES CASES A TENSOR e.g. b.data-a instead of b-a
+        if isinstance(network, Network):
+            return [b-a for (b, a) in zip(self.parameters(), network.parameters())]
+        elif isinstance(network, list) and len(network) > 0:
+            if isinstance(network[0], FloatTensor):
+                return [b-a for (b, a) in zip(self.parameters(), network)]
+            elif isinstance(network[0], list):
+                return [b-FloatTensor(a) for (b, a) in zip(self.parameters(), network)]
+        else:
+            raise Exception('Error: {} type not supported'.format(type(network)))
+
 
 
     '''
@@ -141,8 +163,8 @@ class Network(nn.Module):
                 gd.append(c[1])
 
         # create coordinate/index tensor i, and value tensor v
-        i = torch.LongTensor(cd)
-        v = torch.FloatTensor(gd)
+        i = LongTensor(cd)
+        v = FloatTensor(gd)
         s = list(p.size())
 
         # ensure that size has two coordinates e.g. prevent cases like (2L,)
@@ -150,7 +172,7 @@ class Network(nn.Module):
             s.append(1)
 
         # update parameters with gradients at particular coordinates
-        grads = torch.sparse.FloatTensor(i.t(), v, torch.Size(s)).to_dense()
+        grads = sparse.FloatTensor(i.t(), v, Size(s)).to_dense()
         params[index].grad.data += grads
 
 
@@ -163,7 +185,7 @@ class Network(nn.Module):
            avg (int, optional)
     '''
     def add_batched_coordinates(self, coords, avg=1):
-        num_procs = mp.cpu_count()
+        num_procs = cpu_count()
         self.share_memory()
         processes = []
 
@@ -180,7 +202,7 @@ class Network(nn.Module):
 
         # update parameters in parallel
         for k in params_coords.keys():
-            p = mp.Process(target=self.add_coordinates, args=(k, params_coords[k], avg,))
+            p = Process(target=self.add_coordinates, args=(k, params_coords[k], avg,))
             p.start()
             processes.append(p)
 
@@ -188,98 +210,21 @@ class Network(nn.Module):
             p.join()
 
 
-class TestNeuron(Network):
-    def __init__(self):
-        super(Network, self).__init__()
-        self.fc1 = nn.Linear(1,2)
-
-
-    def forward(self, x):
-        x = x.view(-1, 2)
-        return self.fc1(x)
-
-
-class NeuralNetwork(Network):
+'''
+Network used for development only.
+Train on MNIST
+'''
+class DevNet(Network):
     def __init__(self):
         super(Network, self).__init__()
         prob_drop = 0.2
         self.loss = F.nll_loss
-        self.optimizer = optim.Adam
-        self.fc1 = nn.Linear(784, 200)
-        torch.nn.init.normal(self.fc1.weight)
-        torch.nn.init.normal(self.fc1.bias)
-        self.do1 = nn.Dropout(p=prob_drop)
-        self.fc2 = nn.Linear(200, 100)
-        torch.nn.init.normal(self.fc2.weight)
-        torch.nn.init.normal(self.fc2.bias)
-        self.do2 = nn.Dropout(p=prob_drop)
-        self.fc3 = nn.Linear(100, 60)
-        torch.nn.init.normal(self.fc3.weight)
-        torch.nn.init.normal(self.fc3.bias)
-        self.do3 = nn.Dropout(p=prob_drop)
-        self.fc4 = nn.Linear(60, 30)
-        torch.nn.init.normal(self.fc4.weight)
-        torch.nn.init.normal(self.fc4.bias)
-        self.do4 = nn.Dropout(p=prob_drop)
-        self.fc5 = nn.Linear(30, 10)
-        torch.nn.init.normal(self.fc5.weight)
-        torch.nn.init.normal(self.fc5.bias)
+        self.fc1 = nn.Linear(784, 10)
+        self.fc2 = nn.Linear(10, 10)
 
 
     def forward(self, x):
         x = x.view(-1, 784)
-        x = self.do1(F.sigmoid(self.fc1(x)))
-        x = self.do2(F.sigmoid(self.fc2(x)))
-        x = self.do3(F.sigmoid(self.fc3(x)))
-        x = self.do4(F.sigmoid(self.fc4(x)))
+        x = F.sigmoid(self.fc1(x))
 
-        return F.log_softmax(self.fc5(x))
-
-
-class Convolution(nn.Module):
-    def __init__(self):
-        super(Convolution, self).__init__()
-        self.loss = F.nll_loss
-        self.optimizer = optim.Adam
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
-        self.training = True
-
-    def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 320)
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, training=self.training)
-        x = self.fc2(x)
-        return F.log_softmax(x)
-
-
-class Sequence(nn.Module):
-    def __init__(self):
-        super(Sequence, self).__init__()
-        self.lstm1 = nn.LSTMCell(1, 51)
-        self.lstm2 = nn.LSTMCell(51, 1)
-        self.loss = F.nll_loss
-        self.optimizer = optim.Adam
-
-    def forward(self, input, future=0):
-        outputs = []
-        h_t = Variable(torch.zeros(input.size(0), 51).double(), requires_grad=False)
-        c_t = Variable(torch.zeros(input.size(0), 51).double(), requires_grad=False)
-        h_t2 = Variable(torch.zeros(input.size(0), 1).double(), requires_grad=False)
-        c_t2 = Variable(torch.zeros(input.size(0), 1).double(), requires_grad=False)
-
-        for i, input_t in enumerate(input.chunk(input.size(1), dim=1)):
-            h_t, c_t = self.lstm1(input_t, (h_t, c_t))
-            h_t2, c_t2 = self.lstm2(c_t, (h_t2, c_t2))
-            outputs += [c_t2]
-        for i in range(future):
-            h_t, c_t = self.lstm1(c_t2, (h_t, c_t))
-            h_t2, c_t2 = self.lstm2(c_t, (h_t2, c_t2))
-            outputs += [c_t2]
-        outputs = torch.stack(outputs, 1).squeeze(2)
-        return outputs
+        return F.log_softmax(self.fc2(x))
