@@ -110,7 +110,7 @@ class Trainer(object):
 
 class DistributedTrainer(Trainer):
     def __init__(self, network, sess_id, data, batch_size=1, cuda=False, 
-                 drop_last=False, seed=-1, shuffle=True):
+                 drop_last=False, shuffle=True, seed=-1):
         super(DistributedTrainer, self).__init__(batch_size, cuda, data, drop_last, 
                                                  network, shuffle, seed)
 
@@ -124,7 +124,7 @@ class DistributedTrainer(Trainer):
 Trainer for development only. Loads MNIST dataset on every worker.
 '''
 class DevTrainer(DistributedTrainer):
-    def __init__(self, network, sess_id, data, batch_size=1, cuda=False, drop_last=False, seed=-1, shuffle=True):
+    def __init__(self, network, sess_id, data, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1):
         super(DevTrainer, self).__init__(network, sess_id, data, batch_size, cuda, drop_last, 
                                          shuffle, seed)
 

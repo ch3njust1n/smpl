@@ -20,7 +20,7 @@ from time import sleep, time
 from train import Train
 from datetime import datetime
 from itertools import combinations
-from model.network import DevNet
+from model import network as net
 import parameter_tools as pt
 import os, torch, json, redis, socket, logging, utils, test, train, data
 
@@ -72,7 +72,7 @@ class ParameterServer(object):
         # Track best set of parameters. Equivalent of "global" params in central server model.
         # Stash this server's info
         self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "rank": 100,
-                                           "parameters": [x.data.tolist() for x in DevNet().parameters()]}))
+                                           "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
         self.cache.set('server', json.dumps({"clique": self.clique, "host": self.host, "port": self.port}))
 
 
@@ -298,7 +298,7 @@ class ParameterServer(object):
         self.shared_grad_state[sess_id] = {"peers":[], "gradients":[], "samples":0}
         
         # each session should create its own model
-        nn = DevNet()
+        nn = net.DevNet()
 
         # pull synchronized session parameters
         self.logger.info('PrepingLocal')
@@ -309,7 +309,8 @@ class ParameterServer(object):
             nn.share_memory()
 
         # DistributedTrainer constructor parameters
-        conf = (nn, sess_id, self.data, 1, self.cuda, False, self.seed, True)
+        # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
+        conf = (nn, sess_id, self.data, 1, self.cuda, False, True, self.seed)
         processes = []
 
         for w in range(self.workers):

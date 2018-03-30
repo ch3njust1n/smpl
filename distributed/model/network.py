@@ -216,8 +216,7 @@ Train on MNIST
 '''
 class DevNet(Network):
     def __init__(self):
-        super(Network, self).__init__()
-        prob_drop = 0.2
+        super(DevNet, self).__init__()
         self.loss = F.nll_loss
         self.fc1 = nn.Linear(784, 10)
         self.fc2 = nn.Linear(10, 10)
