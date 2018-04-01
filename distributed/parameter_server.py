@@ -99,8 +99,10 @@ class ParameterServer(object):
         # Network() was named generically intentionally so that users can plug-and-play
         # Track best set of parameters. Equivalent of "global" params in central server model.
         # Stash this server's info
+        # self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "rank": 100,
+        #                                    "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
         self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "rank": 100,
-                                           "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
+                                           "parameters": [x.data.tolist() for x in net.DevNeuron().parameters()]}))
         self.cache.set('server', json.dumps({"clique": self.clique, "host": self.host, "port": self.port}))
 
         # Establish ports for receiving API calls
@@ -145,7 +147,7 @@ class ParameterServer(object):
                 p.start()
 
         except KeyboardInterrupt:
-            self.logger('\nexiting...')
+            self.logger.info('\nexiting...')
             sys.exit(0)
 
 
@@ -331,12 +333,12 @@ class ParameterServer(object):
             p.start()
             processes.append(p)
 
-        self.logger('LocalSyncBarrier')
+        self.logger.info('LocalSyncBarrier')
         # Local sync barrier
         for p in processes:
             p.join()
 
-        self.logger('MultiStepGrad')
+        self.logger.info('MultiStepGrad')
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'])
@@ -498,10 +500,12 @@ class ParameterServer(object):
         self.logger.info('gotBestParameters')
 
         # save parameters so can calculate difference (gradient) after training
-        self.cache.set(sess_id, json.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, "train_size": 0,
-                                            "master": self.me, "party": peers, "pid": 0, "val": [0.0], "losses": []}))
+        self.cache.set(sess_id, json.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
+                                            "train_size": 0, "master": self.me, "party": peers, "pid": 0, 
+                                            "val": [0.0], "losses": []}))
 
-        if self.cache.exists(sess_id):
+        if not self.cache.exists(sess_id):
+            self.logger.info('Error: key insertion failure {}'.format(sess_id))
             raise Exception('Error: key insertion failure {}'.format(sess_id))
 
         return ok, sess_id

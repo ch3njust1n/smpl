@@ -228,3 +228,14 @@ class DevNet(Network):
         x = F.sigmoid(self.fc1(x))
 
         return F.log_softmax(self.fc2(x))
+
+
+class DevNeuron(Network):
+    def __init__(self):
+        super(DevNeuron, self).__init__()
+        self.loss = F.nll_loss
+        self.fc1 = nn.Linear(2, 1)
+
+
+    def forward(self, x):
+        pass
