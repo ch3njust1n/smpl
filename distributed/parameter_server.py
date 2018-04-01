@@ -75,13 +75,10 @@ class ParameterServer(object):
         logging.basicConfig(level=logging.DEBUG)
         self.logger = logging.getLogger()
         log_name = os.path.join(log_dir,'gradient{}.log'.format(self.me['id']))
-        print log_name
         handler = logging.FileHandler(filename=log_name)
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
-
-        self.logger.info('Logging setup complete')
 
         if self.dev:
             # CUDA/GPU settings
@@ -102,7 +99,7 @@ class ParameterServer(object):
         # self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "rank": 100,
         #                                    "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
         self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "rank": 100,
-                                           "parameters": [x.data.tolist() for x in net.DevNeuron().parameters()]}))
+                                           "parameters": [x.data.tolist() for x in net.DevNeuron(self.seed).parameters()]}))
         self.cache.set('server', json.dumps({"clique": self.clique, "host": self.host, "port": self.port}))
 
         # Establish ports for receiving API calls
@@ -342,6 +339,7 @@ class ParameterServer(object):
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'])
+        self.logger.info('multistep val:{}'.format(multistep))
         self.allreduce(sess_id, multistep)
 
 
@@ -357,12 +355,12 @@ class ParameterServer(object):
                           peer's gradients
     '''
     def allreduce(self, sess_id, values):
-
+        self.logger.info('AllReducing! sess_id:{}'.format(sess_id))
         sess = json.loads(self.cache.get(sess_id))
         master = sess['master']
 
         if self.me == master:
-
+            self.logger.info('AllReducing!-master')
             # wait until all peers have shared the gradients
             while len(self.gradients['peers']) < len(sess['party']):
                 sleep(1)
@@ -373,6 +371,7 @@ class ParameterServer(object):
             model.add_batched_coordinates(self.gradients['gradients'], avg=self.clique+1)
 
         else:
+            self.logger.info('AllReducing!-peer')
             send_to = master
             # if you're not master, send your gradients to master and wait for master to send you the average
             sum_grads = self.pc.send(send_to['host'], send_to['port'], 
@@ -383,6 +382,7 @@ class ParameterServer(object):
 
             # update your model gradients with the average
             model.add_batched_coordinates(sum_grads)
+        self.logger.info('AllReducing!-done')
 
 
     '''

@@ -20,12 +20,21 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.multiprocessing import Process, cpu_count
+import logging, os
 
 
 class Network(nn.Module):
-    def __init__(self):
+    def __init__(self, seed=0):
         super(Network, self).__init__()
         self.optimizer = optim.SGD
+
+        logging.basicConfig(level=logging.DEBUG)
+        self.logger = logging.getLogger()
+        log_name = os.path.join(os.getcwd(),'logs/network{}.log'.format(seed))
+        handler = logging.FileHandler(filename=log_name)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
 
 
     '''
@@ -36,7 +45,7 @@ class Network(nn.Module):
            grads (bool, optional)
     Output: parameters/gradients (list)
     '''
-    def get_parameters(self, tolist=False, reference=False, grads=False):
+    def _weights(self, tolist=False, reference=False, grads=False):
         if tolist:
             return [x.grad.data.tolist() if grads else x.data.tolist() for x in self.parameters()]
         else:
@@ -51,6 +60,28 @@ class Network(nn.Module):
                     parameters.append(zeros(params.size()).copy_(params))
 
                 return parameters
+
+
+    '''
+    Wrapper function for getting network parameters
+
+    Input: tolist (bool, optional)
+           reference (bool, optional)
+    Output: parameters (list)
+    '''
+    def get_parameters(self, tolist=False, reference=False):
+        return self._weights(tolist, reference, grads=False)
+
+
+    '''
+    Wrapper function for getting network gradients
+
+    Input: tolist (bool, optional)
+           reference (bool, optional)
+    Output: gradients (list)
+    '''
+    def get_gradients(self, tolist=False, reference=False):
+        return self._weights(tolist, reference, grads=True)
 
 
     '''
@@ -104,22 +135,26 @@ class Network(nn.Module):
     Take the difference between the parameters in this network and a given network. 
     The given network should be an older version of this network.
 
-    Input:  network  Parameters, which can be in the form of a Network object, list of tensors, or nested
+    Input:  network  Parameters which can be in the form of a Network object, list of tensors, or nested
                      list of lists
-    Output: gradient A list of tensors representing the difference between the network parameters
+    Output: gradient A list of torch.FloatTensors representing the difference between the network parameters
     '''
     def multistep_grad(self, network, sparsify=False):
         # MAY NEED TO MAKE b IN EACH OF THESES CASES A TENSOR e.g. b.data-a instead of b-a
+        self.logger.info('MSG network:{}\n ThisParam:{}'.format(network, str(self.get_parameters(reference=True))))
         if isinstance(network, Network):
-            return [b-a for (b, a) in zip(self.parameters(), network.parameters())]
+            self.logger.info('MSG 0')
+            return [b-a for (b, a) in zip(sself.get_parameters(reference=True), network.parameters())]
         elif isinstance(network, list) and len(network) > 0:
             if isinstance(network[0], FloatTensor):
-                return [b-a for (b, a) in zip(self.parameters(), network)]
+                self.logger.info('MSG 1')
+                return [b-a for (b, a) in zip(self.get_parameters(reference=True), network)]
             elif isinstance(network[0], list):
-                return [b-FloatTensor(a) for (b, a) in zip(self.parameters(), network)]
+                self.logger.info('MSG 2')
+                return [b-FloatTensor(a) for (b, a) in zip(self.get_parameters(reference=True), network)]
         else:
+            self.logger.info('MSG 3')
             raise Exception('Error: {} type not supported'.format(type(network)))
-
 
 
     '''
@@ -231,8 +266,8 @@ class DevNet(Network):
 
 
 class DevNeuron(Network):
-    def __init__(self):
-        super(DevNeuron, self).__init__()
+    def __init__(self, seed):
+        super(DevNeuron, self).__init__(seed=seed)
         self.loss = F.nll_loss
         self.fc1 = nn.Linear(2, 1)
 
