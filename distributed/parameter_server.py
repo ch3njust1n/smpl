@@ -54,28 +54,6 @@ class ParameterServer(object):
 
         self.clear_port()
 
-        if self.dev:
-            # CUDA/GPU settings
-            if args.cuda and torch.cuda.is_available():
-                torch.cuda.manual_seed_all(args.seed)
-            else:
-                torch.manual_seed(args.seed)
-
-        # Save all state in Redis
-        self.cache = redis.StrictRedis(host='localhost', port=6379, db=0)
-        if args.flush:
-            self.flush()
-
-        
-        # Setup parameter cache
-        # Network() was named generically intentionally so that users can plug-and-play
-        # Track best set of parameters. Equivalent of "global" params in central server model.
-        # Stash this server's info
-        self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "rank": 100,
-                                           "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
-        self.cache.set('server', json.dumps({"clique": self.clique, "host": self.host, "port": self.port}))
-
-
         # Load party config
         self.peers = utils.load_json(os.path.join(os.getcwd(), 'distributed/config/', self.party))
 
@@ -85,14 +63,45 @@ class ParameterServer(object):
         utils.check_party(self.peers)
         self.me = utils.get_me(self.peers, eth=self.eth)
 
+        # For testing only so that we can see a difference in the parameters across peers
+        self.seed = self.me['id']
+
+        # Clear previous logs
+        log_dir = os.path.join(os.getcwd(), 'logs')
+        for file in os.listdir(log_dir):
+            if file.endswith('.log'): os.remove(os.path.join(log_dir, file))
+
         # Setup logging
         logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger(__name__)
-        handler = logging.FileHandler(os.path.join(os.getcwd(),'logs/gradient{}.log'.format(self.me['id'])), mode='w')
-        handler.setLevel(logging.INFO)
+        self.logger = logging.getLogger()
+        log_name = os.path.join(log_dir,'gradient{}.log'.format(self.me['id']))
+        print log_name
+        handler = logging.FileHandler(filename=log_name)
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
+
+        self.logger.info('Logging setup complete')
+
+        if self.dev:
+            # CUDA/GPU settings
+            if args.cuda and torch.cuda.is_available():
+                torch.cuda.manual_seed_all(self.seed)
+            else:
+                torch.manual_seed(self.seed)
+
+        # Save all state in Redis
+        self.cache = redis.StrictRedis(host='localhost', port=6379, db=0)
+        if args.flush:
+            self.flush()
+
+        # Setup parameter cache
+        # Network() was named generically intentionally so that users can plug-and-play
+        # Track best set of parameters. Equivalent of "global" params in central server model.
+        # Stash this server's info
+        self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "rank": 100,
+                                           "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
+        self.cache.set('server', json.dumps({"clique": self.clique, "host": self.host, "port": self.port}))
 
         # Establish ports for receiving API calls
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -258,7 +267,7 @@ class ParameterServer(object):
             connected, sess_id = self.init_session()
             sleep(1)
 
-        self.logger.info('established hyperedge')
+        self.logger.info('established hyperedge - sess_id:{}'.format(sess_id))
 
         # Maintains hyperedge gradient sharing
         self.gradients = {"peers":[], "gradients":[], "samples":0}
@@ -301,9 +310,13 @@ class ParameterServer(object):
         nn = net.DevNet()
 
         # pull synchronized session parameters
-        self.logger.info('PrepingLocal')
-        sess = json.loads(self.cache.get(sess_id))
+        self.logger.info('PrepingLocal sess_id:{}'.format(sess_id))
+        getSess = self.cache.get(sess_id)
+        self.logger.info('GetThisSess: {}'.format(getSess))
+        sess = json.loads(getSess)#self.cache.get(sess_id))
+        self.logger.info('TrainGetSessParams')
         nn.update_parameters(sess['parameters'])
+        self.logger.info('UpdatedParameters')
 
         if self.parallel == 'hogwild':
             nn.share_memory()
@@ -318,11 +331,12 @@ class ParameterServer(object):
             p.start()
             processes.append(p)
 
+        self.logger('LocalSyncBarrier')
         # Local sync barrier
         for p in processes:
             p.join()
 
-        self.logger('LocalSyncBarrier')
+        self.logger('MultiStepGrad')
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'])
@@ -487,6 +501,9 @@ class ParameterServer(object):
         self.cache.set(sess_id, json.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, "train_size": 0,
                                             "master": self.me, "party": peers, "pid": 0, "val": [0.0], "losses": []}))
 
+        if self.cache.exists(sess_id):
+            raise Exception('Error: key insertion failure {}'.format(sess_id))
+
         return ok, sess_id
 
 
@@ -595,6 +612,8 @@ class ParameterServer(object):
         # find a unique clique
         unique = self.get_unique_clique(self.peers)
         peers = []
+        responses = []
+
 
         self.logger.info('uniqueCliq: {}'.format(unique))
 

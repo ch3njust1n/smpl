@@ -24,6 +24,7 @@ from torch.multiprocessing import Process, cpu_count
 
 class Network(nn.Module):
     def __init__(self):
+        super(Network, self).__init__()
         self.optimizer = optim.SGD
 
 
