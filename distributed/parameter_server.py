@@ -38,6 +38,7 @@ class ParameterServer(object):
         self.epochs         = args.epochs
         self.eth            = args.eth
         self.epsilon        = args.epsilon
+        self.he_count       = 0
         self.log_freq       = args.log_freq
         self.max            = args.max
         self.name           = args.name
@@ -247,9 +248,23 @@ class ParameterServer(object):
 
     '''
     Internal API
-    Wrapper function for train()
+    Wrapper function for train(). Continue to initiate hyperedges while
+    your current hyperedge count is less than the specified max. Iterating in this fashion
+    instead of spawning max processes at once and using join() allows self.he_count to account
+    for hyperedges created by other peers that this peer has joined else will cause a deadlock
+    where no one joins anyone else's hyperedge and all peers request each other.
     '''
+    # def async_train(self):
+    #     while self.ep_count < self.epochs:
+    #         Process(target=self.train_hyperedge).start()
+            
+    #         self.lock.acquire()
+    #         while self.he_count == self.max:
+    #             self.logger.info('he_count: {}'.format(self.he_count))
+    #             self.lock.release()
+    #             sleep(random())
     def async_train(self):
+        #### CREATE ONLY ONE HYPEREDGE FOR DEV ONLY
         Process(target=self.train_hyperedge).start()
 
 
@@ -284,6 +299,7 @@ class ParameterServer(object):
         # increment total successful training epoches
         self.lock.acquire()
         self.ep_count += 1
+        self.he_count -= 1
         self.lock.release()
 
 
@@ -648,15 +664,23 @@ class ParameterServer(object):
     Output: {alias, host, port, accuracy}
     '''
     def establish_session(self, sess_id, master):
-        record = json.loads(self.cache.get('best'))
+        self.lock.acquire()
+        if self.he_count == self.max:
+            return {}
+        else:
+            # Increment hyperedge count
+            self.he_count += 1
+            record = json.loads(self.cache.get('best'))
+            
+            me = dict(self.me)
+            me['accuracy'] = record['accuracy']
+
+            # CHECK FOR UNIQUE HYPEREDGES AGAIN AND IF A SESSION IN THE CACHE ALREADY HAS ALL THESE
+            # PEERS EXACTLY, THEN ABORT THIS CURRENT SESSION
+
+            self.cache.set(sess_id, json.dumps({"id": sess_id, "master": master, "peers": []}))
+        self.lock.release()
         
-        me = dict(self.me)
-        me['accuracy'] = record['accuracy']
-
-        # CHECK FOR UNIQUE HYPEREDGES AGAIN AND IF A SESSION IN THE CACHE ALREADY HAS ALL THESE
-        # PEERS EXACTLY, THEN ABORT THIS CURRENT SESSION
-
-        self.cache.set(sess_id, json.dumps({"id": sess_id, "master": master, "peers": []}))
         return me
 
 
