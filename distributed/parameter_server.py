@@ -306,7 +306,7 @@ class ParameterServer(object):
         self.shared_grad_state[sess_id] = {"peers":[], "gradients":[], "samples":0}
         
         # each session should create its own model
-        nn = net.DevNet()
+        nn = net.DevNeuron(self.seed)
 
         # pull synchronized session parameters
         self.logger.info('PrepingLocal sess_id:{}'.format(sess_id))
@@ -360,10 +360,12 @@ class ParameterServer(object):
         master = sess['master']
 
         if self.me == master:
-            self.logger.info('AllReducing!-master')
+            self.logger.info('AllReducing!-master\npeers:{}, party:{}'.format(len(self.gradients['peers']), len(sess['party'])))
             # wait until all peers have shared the gradients
             while len(self.gradients['peers']) < len(sess['party']):
                 sleep(1)
+
+            self.logger.info('AllShared')
 
             # TODO: 1. Average gradients and redistribute to peers
             #       2. Multiply by learning rate, and add to model
@@ -395,9 +397,10 @@ class ParameterServer(object):
     Outputs:
     '''
     def share_grad(self, sess_id, peer, gradients):
-
+        self.logger.info('ShareGrads')
         sess = json.loads(self.cache.get(sess_id))
         self.gradients['peers'].append(peer['alias'])
+        self.logger.info('ShareGradsAppendPeers gradients:{}'.format(self.gradients))
 
         # TODO: Convert string gradients to list of FloatTensors
         if len(self.gradients['gradients']) == 0:
