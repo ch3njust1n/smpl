@@ -8,7 +8,7 @@
     Hariri Institute for Computing and 
     Computational Sciences & Engineering
 '''
-import torch
+import torch, math
 import numpy as np
 
 
@@ -58,6 +58,8 @@ def param_delta(self, original, updated):
 '''
 Extracts the largest k values across all tensors in the given list
 
+TODO: Parallelize, refactor and document
+
 Input: tensors (list) List of PyTorch FloatTensors
        k       (numeric, optional) Value indicating amount of parameters to keep
        percent (bool, optional) Indicates if k is a percent or an integer
@@ -67,7 +69,7 @@ Output: (list) List of lists containing coordinates-parameter pairs
         e.g. [[[0, 0, 0], -0.43671706318855286], [[0, 0, 1], -0.4151779115200043], [[1, 0, 0], 0.19337968528270721]]
 '''
 def largest_k(tensors, k=1, percent=True, zeros=True):
-    # flatten all tensors into vectors and then concat and find top-k
+    
     flat = []
     dims = []
     size = []
@@ -78,6 +80,7 @@ def largest_k(tensors, k=1, percent=True, zeros=True):
     elif k < 0:
         raise Exception('k must be >= 0')
 
+    # Flatten all tensors into vectors
     for t in tensors:
         n = torch.numel(t)
         flat.append(t.view(n))
@@ -88,23 +91,28 @@ def largest_k(tensors, k=1, percent=True, zeros=True):
         dims.append(tuple(d))
         size.append(n)
 
+    # Concatenate flattened vectors
     merged = torch.cat(flat)
     total = torch.numel(merged)
 
     use_cuda = merged.is_cuda
 
+    # Define k's value based on parameters
     if percent and k > 0 and k <= 1:
+        # e.g. top-5% of values
         k = int(math.ceil(k * total))
     elif k <= total:
+        # e.g. top-10 values
         k = int(k)
     else:
         raise Exception('k must be in range [0, %d]\ntotal parameters: %d' % (total, total))
 
+    # Find top-k values and corresponding coordinates in the original tensors
     top, coord_1d = torch.topk(torch.abs(merged), k)
     top = torch.gather(merged, 0, to_cuda(torch.LongTensor(coord_1d.tolist()), use_cuda))
     coord_1d = sorted([(t, c) for (t, c) in zip(top, coord_1d)], key=lambda x: x[1])
 
-    # partition topk into bins corresponding to original matrices
+    # Partition topk into bins corresponding to original matrices
     bound = 0
     for i, (s, d) in enumerate(zip(size, dims)):
         b = []
@@ -161,14 +169,3 @@ def make_tensor(coord_list, grads_list, layer):
     grads = torch.FloatTensor(grads_list)
 
     return torch.sparse.FloatTensor(coord.t(), grads, layer.size()).to_dense()
-
-'''
-Directly replace local gradients with corresponding server gradients
-
-Input:
-Output:
-'''
-def insert_parameters(self, grad, selected):
-
-    return grad
-

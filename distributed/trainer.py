@@ -15,7 +15,7 @@ import torchvision.datasets as datasets
 from torch.utils.data import TensorDataset, DataLoader
 from multiprocessing import cpu_count, current_process
 import parameter_tools as pt
-import json, os, logging
+import os, logging
 
 
 class Trainer(object):
@@ -33,6 +33,7 @@ class Trainer(object):
         self.cuda         = cuda
         self.data         = data
         self.drop_last    = drop_last
+        self.epochs       = 1
         self.log_interval = 1
         self.losses       = []
         self.network      = network
@@ -109,24 +110,33 @@ class Trainer(object):
 
 
 class DistributedTrainer(Trainer):
-    def __init__(self, network, sess_id, data, batch_size=1, cuda=False, 
-                 drop_last=False, shuffle=True, seed=-1):
-        super(DistributedTrainer, self).__init__(batch_size, cuda, data, drop_last, 
-                                                 network, shuffle, seed)
+    def __init__(self, data, network, sess_id, share, batch_size=1, cuda=False, 
+                 drop_last=False, seed=-1, shuffle=True):
+        super(DistributedTrainer, self).__init__(batch_size, cuda, data, drop_last, network, shuffle, seed)
 
         self.pid         = current_process().pid
         self.sess_id     = sess_id
-        self.total_val   = 0
-        self.total_train = 0 
+        self.share       = share
+
+
+    '''
+    Share train set and validation set sizes, and final validation accuracy with parameter server
+    '''
+    def share(self):
+        self.share[self.sess_id]['train_size'] = self.epochs * self.total_train
+        self.share[self.sess_id]['val_size'] = self.val_size
+        self.share[self.sess_id]['acc'] = self.validations[-1]
 
 
 '''
 Trainer for development only. Loads MNIST dataset on every worker.
 '''
 class DevTrainer(DistributedTrainer):
-    def __init__(self, network, sess_id, data, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1):
-        super(DevTrainer, self).__init__(network, sess_id, data, batch_size, cuda, drop_last, 
-                                         shuffle, seed)
+    def __init__(self, data, network, sess_id, share, batch_size=1, cuda=False, 
+                 drop_last=False, seed=-1, shuffle=True):
+        super(DevTrainer, self).__init__(data, network, sess_id, share, batch_size, cuda, drop_last, seed, shuffle)
+        self.total_val   = 0
+        self.total_train = 0
 
 
     def load_data(self):

@@ -8,7 +8,7 @@
     Computational Sciences & Engineering
 '''
 
-import os, pickle, datetime, json, codecs, glob, torch, math
+import os, pickle, datetime, ujson, codecs, glob, torch, math
 import numpy as np
 from subprocess import PIPE, Popen
 
@@ -23,15 +23,15 @@ def save_pickle(save_dir, data):
     return filename
 
 
-def save_json(save_dir, data):
-    filename = gen_filename(save_dir, 'json')
-    json.dump(data, codecs.open(filename, 'w', encoding='utf-8'))
+def save_ujson(save_dir, data):
+    filename = gen_filename(save_dir, 'ujson')
+    ujson.dump(data, codecs.open(filename, 'w', encoding='utf-8'))
     return filename
 
 
-def load_json(file_path):
+def load_ujson(file_path):
     with open(file_path, 'rb') as file:
-        return json.load(file)
+        return ujson.load(file)
 
 
 def save_pt(data, path):

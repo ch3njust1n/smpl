@@ -10,7 +10,7 @@
     Computational Sciences & Engineering
 '''
 
-import socket, json
+import socket, ujson
 from multiprocessing import Process, Manager
 from threading import Thread
 from time import sleep
@@ -79,7 +79,7 @@ class ParameterChannel(object):
     Output: (string) response
     '''
     def format(self, msg):
-        msg = json.dumps(msg)
+        msg = ujson.dumps(msg)
         return ''.join([str(len(msg)), '::', str(msg)])
 
 
@@ -112,6 +112,7 @@ class ParameterChannel(object):
             # Look for the response
             resp = sock.recv(4096).split('::')
 
+            self.logger.debug('pc.send() resp[0]:{}'.format(resp[0]))
             expected = int(resp[0])
             
             self.logger.info('pc.send() expected:{}'.format(expected))
@@ -132,7 +133,7 @@ class ParameterChannel(object):
             # Received entire message
             ok = received == expected
 
-            content = json.loads(content)
+            content = ujson.loads(content)
 
             self.logger.info('pc.send() ok:{}'.format(ok))
 

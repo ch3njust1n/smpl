@@ -12,7 +12,7 @@
 import sys
 sys.path.insert(0, 'data')
 
-import os, utils, json
+import os, utils
 import datetime as dt
 import parameter_tools as pt
 import torch.optim as optim
@@ -61,7 +61,6 @@ class Train(DevTrainer):
 
             for batch_idx, (data, target) in enumerate(self.train_loader):
                 batch_size = len(data)
-                self.total_train += batch_size
                 data = Variable(pt.to_cuda(data, cuda=self.cuda))
                 target = Variable(pt.to_cuda(target, cuda=self.cuda))
 
@@ -75,3 +74,7 @@ class Train(DevTrainer):
 
                 self.optimizer.step()
                 self.validations.append(self.validate())
+
+        # Must call to share train size and 
+        # validation size with parameter server
+        self.share()

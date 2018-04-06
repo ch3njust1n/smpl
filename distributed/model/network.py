@@ -135,26 +135,34 @@ class Network(nn.Module):
     Take the difference between the parameters in this network and a given network. 
     The given network should be an older version of this network.
 
-    Input:  network  Parameters which can be in the form of a Network object, list of tensors, or nested
-                     list of lists
-    Output: gradient A list of torch.FloatTensors representing the difference between the network parameters
+    Input:  network   Parameters which can be in the form of a Network object, list of tensors, or nested
+                      list of lists
+            sparsify  (bool) If True, return sparse parameters with their corresponding coordinates as a nested 
+                             list of lists
+            tolist    (bool) If True, return parameters as a nested list of lists
+    Output: gradients (list) A list of torch.FloatTensors representing the difference between the network parameters
     '''
-    def multistep_grad(self, network, sparsify=False):
+    def multistep_grad(self, network, sparsify=False, tolist=False):
         # MAY NEED TO MAKE b IN EACH OF THESES CASES A TENSOR e.g. b.data-a instead of b-a
-        self.logger.info('MSG network:{}\n ThisParam:{}'.format(network, str(self.get_parameters(reference=True))))
+        self.logger.debug('MSG network:{}\n ThisParam:{}'.format(network, str(self.get_parameters(reference=True))))
+        
+        gradients = []
+
         if isinstance(network, Network):
-            self.logger.info('MSG 0')
-            return [b-a for (b, a) in zip(sself.get_parameters(reference=True), network.parameters())]
+            self.logger.debug('MSG 0')
+            gradients = [b-a for (b, a) in zip(sself.get_parameters(reference=True), network.parameters())]
         elif isinstance(network, list) and len(network) > 0:
             if isinstance(network[0], FloatTensor):
-                self.logger.info('MSG 1')
-                return [b-a for (b, a) in zip(self.get_parameters(reference=True), network)]
+                self.logger.debug('MSG 1')
+                gradients = [b-a for (b, a) in zip(self.get_parameters(reference=True), network)]
             elif isinstance(network[0], list):
-                self.logger.info('MSG 2')
-                return [b-FloatTensor(a) for (b, a) in zip(self.get_parameters(reference=True), network)]
+                self.logger.debug('MSG 2')
+                gradients = [b-FloatTensor(a) for (b, a) in zip(self.get_parameters(reference=True), network)]
         else:
-            self.logger.info('MSG 3')
+            self.logger.debug('MSG 3')
             raise Exception('Error: {} type not supported'.format(type(network)))
+
+        return pt.largest_k(gradients) if sparsify else [g.data.tolist() for g in gradients] if tolist else gradients
 
 
     '''
@@ -215,6 +223,9 @@ class Network(nn.Module):
     '''
     Update parameters across the network in parallel.
     This should only be used after back-propagation.
+
+    TODO: 1.  Multiply by learning rate, and add to model 
+              Refer to Large Scale Distributed Deep Networks, Dean et al, 2012
 
     Input: coords (list) Nested list of lists containing coordinate-gradient pairs from parameter_tools.largest_k()
             e.g. [[[0, 0, 0], 0.23776602745056152], [[0, 0, 1], -0.09021180123090744], [[1, 0, 0], 0.10222198069095612]]

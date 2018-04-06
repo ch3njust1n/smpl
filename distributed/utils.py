@@ -8,7 +8,7 @@
     Computational Sciences & Engineering
 '''
 
-import os, pickle, datetime, json, codecs, glob, torch, math 
+import os, pickle, datetime, ujson, codecs, glob, torch, math 
 # network:
 import socket, fcntl, struct
 import numpy as np
@@ -27,19 +27,19 @@ def save_pickle(save_dir, data):
 
 def save_json(save_dir, data):
     filename = gen_filename(save_dir, 'json')
-    json.dump(data, codecs.open(filename, 'w', encoding='utf-8'))
+    ujson.dump(data, codecs.open(filename, 'w', encoding='utf-8'))
     return filename
 
 
 '''
-Load JSON object from a saved file
+Load ujson object from a saved file
 
-Input   file_path (string) Path to JSON file
-Output: (list) Loaded JSON
+Input   file_path (string) Path to ujson file
+Output: (list) Loaded ujson
 '''
 def load_json(file_path):
     with open(file_path, 'rb') as file:
-        return json.load(file)
+        return ujson.load(file)
 
 
 '''
@@ -59,10 +59,10 @@ def get_ip_address(ifname):
 '''
 Determine which configuration information corresponds to this machine.
 All nodes on the MOC use device ens3 for network communication.
-This will raise an exception if the party.json configuration file is missing information
+This will raise an exception if the party.ujson configuration file is missing information
 on this machine. Removes this machine from the list.
 
-Input:  config (list) List from party.json
+Input:  config (list) List from party.ujson
         eth (string, optional) Ethernet interface
 Output: dictionary containing identity of this machine
 '''
