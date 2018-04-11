@@ -109,7 +109,7 @@ class ParameterChannel(object):
             # Look for the response
             resp = sock.recv(4096).split('::')
 
-            self.logger.debug('pc.send() resp[0]:{}'.format(resp[0]))
+            self.logger.debug('pc.send() resp[0]:{}, len(resp[0]):{}'.format(resp[0], len(resp[0])))
             expected = int(resp[0])
             
             self.logger.info('pc.send() expected:{}'.format(expected))

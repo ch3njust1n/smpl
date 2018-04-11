@@ -286,14 +286,14 @@ class ParameterServer(object):
     Async establish clique and synchronize parameters
     '''
     def __train_hyperedge(self):
-        hyperlog, hyperlog_path = utils.log(self.log_dir, '{}-{}'.format(self.me['id'], utils.get_date()))
+        log, log_path = utils.log(self.log_dir, '{}-{}'.format(self.me['id'], utils.get_date()))
 
         connected = False
         sess_id = 0
 
         # establish clique
         while not connected:
-            connected, sess_id = self.__init_session(log=hyperlog)
+            connected, sess_id = self.__init_session(log=log)
             sleep(1)
 
         log.info('established hyperedge - sess_id:{}'.format(sess_id))
@@ -692,7 +692,7 @@ class ParameterServer(object):
     '''
     def __establish_session(self, sess_id):
         # Setup logging for hyperedge
-        log, log_path = utils.log(self.log_dir, 'edge-{}'.format(sess_id))
+        log, log_path = utils.log(self.log_dir, '{}-{}'.format(self.me['id'], sess_id))
 
         while not self.edge_lock.acquire():
             sleep(0.1)
