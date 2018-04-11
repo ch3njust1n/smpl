@@ -478,7 +478,10 @@ class ParameterServer(object):
             best_params = None
             sess = {}
 
-            if best['host'] != self.me['host']:
+            if best['host'] == self.me['host']:
+                sess = ujson.loads(self.cache.get('best'))
+                sess["party"] = peers
+            else:
 
                 # Always only wanna synchronize with the local parameters of peer with the best parameters
                 # not their globally best parameters, just the parameters they're using for this hyperedge
@@ -488,9 +491,6 @@ class ParameterServer(object):
                     ok = True
                     best_params = resp[0]
                     sess = {"parameters": resp[0], "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
-            else:
-                sess = ujson.loads(self.cache.get('best'))
-                sess["party"] = peers
             
             sess["share_count"] = 0
             sess["gradients"] = []
