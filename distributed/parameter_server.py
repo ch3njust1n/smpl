@@ -455,12 +455,16 @@ class ParameterServer(object):
 
     '''
     External API
-    Get parameters from a party and update parameters
+    Synchronize parameters
 
-    Input:  sess_id (str), session (str), peers (str)
-    Output: ok (bool)
+    Input:  sess_id    (str)  Unique session id
+            best       (str)  Dict representing best peer
+            peers      (list) List of dicts representing peers
+            parameters (list) Nested list of lists containing model parameters
+            accuracy   (int)  Accuracy associated with given model
+    Output: ok         (bool) Flag indicating that sess importation was set in cache correctly
     '''
-    def __synchronize_parameters(self, sess_id, best, peers):
+    def __synchronize_parameters(self, sess_id, best, peers, parameters=[], accuracy=0):
         # Get log
         logname = ujson.loads(self.cache.get(sess_id))
         logging.basicConfig(filename=logname, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -468,30 +472,36 @@ class ParameterServer(object):
 
         ok = False
 
-        # If my parameters do not have the best validation accuracy
-        best_params = None
-        sess = {}
+        # If not explicitely given parameters and accuracy, retrieve parameters from the specified best peer
+        if len(parameters) == 0:
+            # If my parameters do not have the best validation accuracy
+            best_params = None
+            sess = {}
 
-        if best['host'] != self.me['host']:
+            if best['host'] != self.me['host']:
 
-            # Always only wanna synchronize with best set of parameters
-            ok, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":["best"]})
+                # Always only wanna synchronize with best set of parameters
+                _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":["best"]})
 
-            if len(resp) > 0:
-                best_params = resp[0]
-                sess = {"parameters": resp[0], "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
+                if len(resp) > 0:
+                    ok = True
+                    best_params = resp[0]
+                    sess = {"parameters": resp[0], "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
+            else:
+                sess = ujson.loads(self.cache.get('best'))
+                sess["party"] = peers
+            
+            sess["share_count"] = 0
+            sess["gradients"] = []
+            sess["samples"] = 0
+            ok = ok and self.cache.set(sess_id, ujson.dumps(sess))
+
+            # Start locally training
+            log.debug('ps.synchronize_parameters() init sess_id: {}'.format(sess_id))
+            Process(target=self.__train, args=(sess_id,)).start()
         else:
-            sess = ujson.loads(self.cache.get('best'))
-            sess["party"] = peers
-        
-        sess["share_count"] = 0
-        sess["gradients"] = []
-        sess["samples"] = 0
-        self.cache.set(sess_id, ujson.dumps(sess))
-
-        # Start locally training
-        log.debug('ps.synchronize_parameters() init sess_id: {}'.format(sess_id))
-        Process(target=self.__train, args=(sess_id,)).start()
+            # Else parameters were explicitely given, so update with those
+            ok = self.update_model(sess_id, parameters, accuracy)
 
         return ok
 
@@ -527,24 +537,27 @@ class ParameterServer(object):
 
         log.info('sortedPeers')
 
-        # Synchronize parameters of model with best validation accuracy
-        resp = []
-        for send_to in peers:
-            Process(target=self.pc.send, 
-                    args=(send_to['host'], send_to['port'],
-                          {"api": "synchronize_parameters", "args": [sess_id, best, peers]},)).start()
-        
-        log.info('synchronizedParameters')
-
         # request parameters from member with highest accuracy
         model = []
+        args = []
         cond = best['alias'] != sess['me']['alias']
         if cond:
             ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
+            args = [sess_id, best, peers]
         else:
             model = ujson.loads(self.cache.get('best'))
+            # send sess_id, parameters, and model accuracy to all peers
+            args = [sess_id, best, peers, model[0], model[1]]
 
-        log.info('gotBestParameters')
+        # Synchronize parameters of model with best validation accuracy
+        for send_to in peers:
+            Thread(target=self.pc.send, 
+                args=(send_to['host'], send_to['port'],
+                      {"api": "synchronize_parameters", "args": args},)).start()
+
+
+        
+        log.info('synchronizedParameters')
 
         # save parameters so can calculate difference (gradient) after training
         self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
@@ -572,22 +585,26 @@ class ParameterServer(object):
     Internal API
     Update the accuracy and parameters of a session
 
-    Input: sess_id    (str)    Session id
-           parameters (tensor) Model parameters
-           accuracy   (float)  Corresponding model accuracy
+    Input:  sess_id    (str)    Session id
+            parameters (tensor) Model parameters
+            accuracy   (float)  Corresponding model accuracy
+    Output: ok         (bool)   Flag indicating if model was updated
     '''
     def update_model(self, sess_id, parameters, accuracy, log=None):
         model = ujson.loads(self.cache.get(sess_id))
+        ok = False
 
         if sess_id == 'best':
             if self.rank(sess_id, log=log) > model['rank']:
                 model['parameters'] = parameters
                 model['accuracy'] = accuracy
-                self.cache.set(sess_id, ujson.dumps(model))
+                ok = self.cache.set(sess_id, ujson.dumps(model))
         else:
             model['parameters'] = parameters
             model['accuracy'] = accuracy
-            self.cache.set(sess_id, ujson.dumps(model))
+            ok = self.cache.set(sess_id, ujson.dumps(model))
+
+        return ok
 
 
     '''
