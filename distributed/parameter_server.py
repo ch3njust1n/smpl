@@ -480,8 +480,9 @@ class ParameterServer(object):
 
             if best['host'] != self.me['host']:
 
-                # Always only wanna synchronize with best set of parameters
-                _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":["best"]})
+                # Always only wanna synchronize with the local parameters of peer with the best parameters
+                # not their globally best parameters, just the parameters they're using for this hyperedge
+                _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
 
                 if len(resp) > 0:
                     ok = True
