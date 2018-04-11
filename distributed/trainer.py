@@ -3,10 +3,6 @@
 	3.26.18
 
 	Module for abstracting trainer classes
-
-	Boston University 
-	Hariri Institute for Computing and 
-    Computational Sciences & Engineering
 '''
 
 from torch import manual_seed

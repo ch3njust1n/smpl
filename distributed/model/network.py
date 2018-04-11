@@ -5,14 +5,11 @@
 	Baseline feedfoward, convolutional, and recurrent networks
 
     Instructions: Define your network architecture here!
-
-	Boston University 
-	Hariri Institute for Computing and 
-    Computational Sciences & Engineering
 '''
 # import sys, os
 # sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
+from .. import utils
 from .. import parameter_tools as pt
 from torch import FloatTensor, LongTensor, zeros, stack, sparse, Size
 from torch.autograd import Variable
@@ -28,13 +25,10 @@ class Network(nn.Module):
         super(Network, self).__init__()
         self.optimizer = optim.SGD
 
-        logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger()
-        log_name = os.path.join(os.getcwd(),'logs/network{}.log'.format(seed))
-        handler = logging.FileHandler(filename=log_name)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+        # Setup logging for hyperedge
+        log_name = os.path.join(os.getcwd(), 'logs', 'nn-{}.log'.format(utils.get_date()))
+        logging.basicConfig(filename=log_name, level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        log = logging.getLogger()
 
 
     '''

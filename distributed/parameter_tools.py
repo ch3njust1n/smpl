@@ -3,10 +3,6 @@
     2.7.18
 
     Module for manipulating network parameters
-
-    Boston University
-    Hariri Institute for Computing and 
-    Computational Sciences & Engineering
 '''
 import torch, math
 import numpy as np

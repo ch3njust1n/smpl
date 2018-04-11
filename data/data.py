@@ -2,10 +2,6 @@
 	Justin Chen
 
 	6.19.17
-
-	Boston University 
-	Hariri Institute for Computing and 
-    Computational Sciences & Engineering
 '''
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')

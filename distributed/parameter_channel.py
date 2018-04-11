@@ -4,10 +4,6 @@
 	7.9.17
 
 	Module of handling communication between the training loop and the ParameterServer
-
-	Boston University
-	Hariri Institute for Computing and 
-    Computational Sciences & Engineering
 '''
 
 import socket, ujson
@@ -33,6 +29,7 @@ class ParameterChannel(object):
     Input: peer (dict) Dictionary contains address information
     '''
     def connect(self, peer):
+
         address = '{}:{}'.format(peer['host'], peer['port'])
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # sock.settimeout(0.1)
@@ -79,8 +76,7 @@ class ParameterChannel(object):
     Output: (string) response
     '''
     def format(self, msg):
-        msg = ujson.dumps(msg)
-        return ''.join([str(len(msg)), '::', str(msg)])
+        return ''.join([str(len(msg)), '::', ujson.dumps(msg)])
 
 
     '''
@@ -105,6 +101,7 @@ class ParameterChannel(object):
             sock = self.connections[addr]
 
             msg = self.format(msg) + '\n'
+            self.logger.info('ps.send() msg:{}'.format(msg))
             sock.sendall(msg)
 
             self.logger.info('pc.send() sent!')
@@ -147,16 +144,21 @@ class ParameterChannel(object):
     Remove a particular peer from the active connections list
     '''
     def remove(self, peer):
-        sock = self.connections[peer]
-        sock.close()
-        del self.connections[peer]
-        self.logger.info('closed socket {}'.format(peer))
+
+        try:
+            sock = self.connections[peer]
+            sock.close()
+            del self.connections[peer]
+            self.logger.info('closed socket {}'.format(peer))
+        except KeyError as e:
+            self.logger.debug('{}\n{}'.format(e, self.connections))
 
 
     '''
     Teardown connections to all peers
     '''
     def teardown(self):
+        
         for sock in self.connections:
             sock = self.connections[peer]
             sock.shutdown(socket.SHUT_RDWR)

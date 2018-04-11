@@ -2,17 +2,31 @@
 	Justin Chen
 
 	6.27.17
-
-	Boston University 
-	Hariri Institute for Computing and 
-    Computational Sciences & Engineering
 '''
 
-import os, pickle, datetime, ujson, codecs, glob, torch, math 
-# network:
+import os, pickle, datetime, ujson, codecs, glob, torch, math, logging
 import socket, fcntl, struct
 import numpy as np
 from subprocess import PIPE, Popen
+from time import gmtime, strftime
+from sys import getsizeof
+
+
+def log(directory, filename):
+    # Setup logging
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger()
+    path = os.path.join(directory, '{}.log'.format(filename))
+    handler = logging.FileHandler(filename=path)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger, path
+
+
+def get_date():
+    return strftime("%Y-%m-%d-%H-%M-%S", gmtime())
+
 
 def get_publicIP():
     ip, err = Popen(["ipconfig", "getifaddr", "en0"], stdout=PIPE).communicate()
@@ -123,3 +137,23 @@ def gen_filename(file_dir, ext):
 
 def latest_model(save_dir):
     return max(glob.iglob(os.path.join(save_dir, '*.pth')), key=os.path.getctime)
+
+'''
+Get the memory size of a Python construct.
+Useful for optimizting memory usage.
+
+Input:  obj   (object) Python object or primative
+        units (str)    String abbreviation for memory units
+Output: size  (int)    Memory size of object  
+'''
+def get_mem(obj, units='b'):
+    scale = 1
+
+    if units.lower() == 'kb':
+        scale = 1e-3
+    elif units.lower() == 'mb':
+        scale = 1e-6
+    elif units.lower() == 'gb':
+        scale = 1e-9
+
+    return getsizeof(a)*scale

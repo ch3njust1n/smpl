@@ -3,10 +3,6 @@
 	6.19.17
 
 	Module for handling multi-party training
-
-	Boston University 
-	Hariri Institute for Computing and 
-    Computational Sciences & Engineering
 '''
 
 import sys

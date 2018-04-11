@@ -8,10 +8,6 @@
 	[sim-puh l]
 
 	Hyper-parallel distributed training for deep neural networks
-
-	Boston University 
-	Hariri Institute for Computing and 
-    Computational Sciences & Engineering
 '''
 
 from distributed.parameter_server import ParameterServer
