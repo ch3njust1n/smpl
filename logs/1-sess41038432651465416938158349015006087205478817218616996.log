@@ -1,0 +1,8 @@
+2018-04-15 17:34:29,654 - root - INFO - api:establish_session
+2018-04-15 17:34:29,655 - root - DEBUG - saving session
+2018-04-15 17:34:29,658 - root - INFO - ps.receive() addr:('192.168.0.11', 59230)
+2018-04-15 17:34:29,658 - root - INFO - api:get_parameters
+2018-04-15 17:34:29,662 - root - INFO - ps.receive() addr:('192.168.0.11', 59230)
+2018-04-15 17:34:29,662 - root - INFO - api:synchronize_parameters
+2018-04-15 17:34:29,663 - root - DEBUG - ps.synchronize_parameters() init sess_id: sess41038432651465416938158349015006087205478817218616996
+2018-04-15 17:34:29,667 - root - INFO - closing connection

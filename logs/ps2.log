@@ -1,0 +1,76 @@
+2018-04-15 17:34:29,656 - root - INFO - listening on port 9888
+2018-04-15 17:34:29,657 - root - INFO - contacting: 192.168.0.10:9888
+2018-04-15 17:34:29,659 - root - INFO - contacting: 192.168.0.12:9888
+2018-04-15 17:34:29,659 - root - INFO - sucess 192.168.0.10:9888 connected
+2018-04-15 17:34:29,660 - root - INFO - sucess 192.168.0.12:9888 connected
+2018-04-15 17:34:29,665 - root - INFO - initiatingSession
+2018-04-15 17:34:29,666 - root - INFO - ps.get_unique_clique() peers:[{u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1}, {u'alias': u'smpl', u'host': u'192.168.0.12', u'port': 9888, u'id': 0}]
+2018-04-15 17:34:29,666 - root - INFO - ps.get_unique_clique() possible_cliques: [({u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1},), ({u'alias': u'smpl', u'host': u'192.168.0.12', u'port': 9888, u'id': 0},)]
+2018-04-15 17:34:29,667 - root - DEBUG - ps.active_sessions active_ids:[]
+2018-04-15 17:34:29,667 - root - INFO - ps.get_unique_clique() active: []
+2018-04-15 17:34:29,667 - root - INFO - uniqueCliq: [{u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1}]
+2018-04-15 17:34:29,668 - root - INFO - pc.send() addr:192.168.0.10:9888
+2018-04-15 17:34:29,668 - root - INFO - ps.send() msg:2::{"api":"establish_session","args":["sess41038432651465416938158349015006087205478817218616996"]}
+
+2018-04-15 17:34:29,668 - root - INFO - pc.send() sent!
+2018-04-15 17:34:29,671 - root - DEBUG - pc.send() resp[0]:5, len(resp[0]):1
+2018-04-15 17:34:29,672 - root - INFO - pc.send() expected:5
+2018-04-15 17:34:29,672 - root - INFO - pc.send() looking
+2018-04-15 17:34:29,672 - root - INFO - pc.send() gotit!
+2018-04-15 17:34:29,672 - root - INFO - pc.send() ok:False
+2018-04-15 17:34:29,672 - root - INFO - ps.__establish_clique: ok:False, resp:{u'id': 1, u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'accuracy': 0.0}
+2018-04-15 17:34:29,672 - root - INFO - uniqueCliqPeers: [{u'id': 1, u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'accuracy': 0.0}], len:1
+2018-04-15 17:34:29,673 - root - INFO - establishedClique: [{u'id': 1, u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'accuracy': 0.0}]
+2018-04-15 17:34:29,673 - root - INFO - sortedPeers
+2018-04-15 17:34:29,673 - root - INFO - pc.send() addr:192.168.0.10:9888
+2018-04-15 17:34:29,673 - root - INFO - ps.send() msg:2::{"api":"get_parameters","args":["best"]}
+
+2018-04-15 17:34:29,673 - root - INFO - pc.send() sent!
+2018-04-15 17:34:29,675 - root - DEBUG - pc.send() resp[0]:2, len(resp[0]):1
+2018-04-15 17:34:29,675 - root - INFO - pc.send() expected:2
+2018-04-15 17:34:29,675 - root - INFO - pc.send() looking
+2018-04-15 17:34:29,675 - root - INFO - pc.send() gotit!
+2018-04-15 17:34:29,675 - root - INFO - pc.send() ok:False
+2018-04-15 17:34:29,676 - root - INFO - pc.send() addr:192.168.0.10:9888
+2018-04-15 17:34:29,676 - root - INFO - synchronizedParameters
+2018-04-15 17:34:29,676 - root - INFO - ps.send() msg:2::{"api":"synchronize_parameters","args":["sess41038432651465416938158349015006087205478817218616996",{"id":1,"alias":"smpl-1","host":"192.168.0.10","port":9888,"accuracy":0.0},[{"id":1,"alias":"smpl-1","host":"192.168.0.10","port":9888,"accuracy":0.0}]]}
+
+2018-04-15 17:34:29,677 - root - INFO - pc.send() sent!
+2018-04-15 17:34:30,409 - root - INFO - ps.listen from ('192.168.0.10', 47740)
+2018-04-15 17:34:30,419 - root - INFO - ps.receive() addr:('192.168.0.10', 47740)
+2018-04-15 17:34:30,420 - root - INFO - api:establish_session
+2018-04-15 17:34:30,421 - root - DEBUG - saving session
+2018-04-15 17:34:30,424 - root - INFO - ps.receive() addr:('192.168.0.10', 47740)
+2018-04-15 17:34:30,425 - root - INFO - api:get_parameters
+2018-04-15 17:34:30,429 - root - INFO - ps.receive() addr:('192.168.0.10', 47740)
+2018-04-15 17:34:30,429 - root - INFO - api:synchronize_parameters
+2018-04-15 17:34:30,430 - root - DEBUG - ps.synchronize_parameters() init sess_id: sess2227097008292050986676701562884121096980547584915498273619971
+2018-04-15 17:34:30,433 - root - INFO - closing connection
+2018-04-15 17:34:30,488 - root - INFO - ps.listen from ('192.168.0.12', 48760)
+2018-04-15 17:34:30,678 - root - INFO - initiatingSession
+2018-04-15 17:34:30,679 - root - INFO - ps.get_unique_clique() peers:[{u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1}, {u'alias': u'smpl', u'host': u'192.168.0.12', u'port': 9888, u'id': 0}]
+2018-04-15 17:34:30,679 - root - INFO - ps.get_unique_clique() possible_cliques: [({u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1},), ({u'alias': u'smpl', u'host': u'192.168.0.12', u'port': 9888, u'id': 0},)]
+2018-04-15 17:34:30,679 - root - DEBUG - ps.active_sessions active_ids:['sess2227097008292050986676701562884121096980547584915498273619971', 'sess41038432651465416938158349015006087205478817218616996']
+2018-04-15 17:34:30,680 - root - DEBUG - ps.active_sessions session:['{"peers":[],"id":"sess2227097008292050986676701562884121096980547584915498273619971","log":"\\/home\\/ubuntu\\/smpl\\/logs\\/2-sess2227097008292050986676701562884121096980547584915498273619971.log"}', '{"val_size":0,"parameters":[[[0.364346087,-0.3121015429]],[-0.1370807886]],"losses":[],"pid":0,"train_size":0,"party":[{"id":1,"alias":"smpl-1","host":"192.168.0.10","port":9888,"accuracy":0.0}],"accuracy":0.0}']
+2018-04-15 17:34:30,680 - root - INFO - ps.get_unique_clique() active: [('sess2227097008292050986676701562884121096980547584915498273619971', '{"peers":[],"id":"sess2227097008292050986676701562884121096980547584915498273619971","log":"\\/home\\/ubuntu\\/smpl\\/logs\\/2-sess2227097008292050986676701562884121096980547584915498273619971.log"}'), ('sess41038432651465416938158349015006087205478817218616996', '{"val_size":0,"parameters":[[[0.364346087,-0.3121015429]],[-0.1370807886]],"losses":[],"pid":0,"train_size":0,"party":[{"id":1,"alias":"smpl-1","host":"192.168.0.10","port":9888,"accuracy":0.0}],"accuracy":0.0}')]
+2018-04-15 17:34:30,680 - root - INFO - uniqueCliq: [{u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1}]
+2018-04-15 17:34:30,680 - root - INFO - pc.send() addr:192.168.0.10:9888
+2018-04-15 17:34:30,681 - root - INFO - ps.send() msg:2::{"api":"establish_session","args":["sess1791937938423959640835973575517697589"]}
+
+2018-04-15 17:34:30,681 - root - INFO - pc.send() sent!
+2018-04-15 17:34:31,511 - root - INFO - ps.receive() addr:('192.168.0.12', 48760)
+2018-04-15 17:34:31,512 - root - INFO - api:establish_session
+2018-04-15 17:34:31,513 - root - DEBUG - saving session
+2018-04-15 17:34:31,516 - root - INFO - ps.receive() addr:('192.168.0.12', 48760)
+2018-04-15 17:34:31,516 - root - INFO - api:get_parameters
+2018-04-15 17:34:31,519 - root - INFO - ps.receive() addr:('192.168.0.12', 48760)
+2018-04-15 17:34:31,520 - root - INFO - api:synchronize_parameters
+2018-04-15 17:34:31,520 - root - DEBUG - ps.synchronize_parameters() init sess_id: sess335128204101707031413444025629961346553882830
+2018-04-15 17:34:31,523 - root - INFO - closing connection
+2018-04-15 17:35:48,631 - root - INFO - Error: pc.send() [Errno 104] Connection reset by peer
+2018-04-15 17:35:48,631 - root - DEBUG - pc.send() resp[0]:, len(resp[0]):0
+2018-04-15 17:35:48,632 - root - INFO - Error: pc.send() invalid literal for int() with base 10: ''
+2018-04-15 17:35:48,632 - root - INFO - ps.__establish_clique: ok:False, resp:
+2018-04-15 17:35:48,633 - root - INFO - uniqueCliqPeers: [], len:0
+2018-04-15 17:35:48,633 - root - INFO - establishedClique: []
+2018-04-15 17:35:48,633 - root - DEBUG - ps.__init_session: removing dead session

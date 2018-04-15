@@ -90,6 +90,14 @@ class ParameterServer(object):
 
         # Save all state in Redis
         self.cache = redis.StrictRedis(host='localhost', port=6379, db=0)
+
+        try:
+            self.cache.ping()
+            self.logger.debug('pinging redis server')
+        except ConnectionError:
+            self.logger.debug("Redis isn't running. try `sudo systemctl start redis`")
+            exit(0)
+
         if args.flush:
             self.flush()
 
@@ -232,19 +240,15 @@ class ParameterServer(object):
         args = content['args'] if 'args' in content else None
 
         if api == 'establish_session':
-            self.logger.info('api:establish_session')
             return self.__establish_session(*args)
         elif api == 'synchronize_parameters':
-            self.logger.info('api:synchronize_parameters')
             return self.__synchronize_parameters(*args)
         elif api == 'get_parameters':
-            self.logger.info('api:get_parameters')
             return self.get_parameters(*args)
         elif api == 'share_grad':
-            self.logger.info('api:share_grad')
             return self.__share_grad(*args)
         else:
-            self.logger.info('api:{}'.format(api))
+            self.logger.info('api:{}, args:{}'.format(api, args))
             return 'invalid'
 
 
@@ -446,6 +450,7 @@ class ParameterServer(object):
         log_name = sess["log"]
         logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         log = logging.getLogger()
+        log.info('api:share_grad')
 
         log.debug('ps.share_grad() alias:{}, sess_id:{}, gradients:{}'.format(self.me['alias'], sess_id, sess))
         sess['share_count'] = 1 + int(sess['share_count'])
@@ -469,6 +474,7 @@ class ParameterServer(object):
         logname = ujson.loads(self.cache.get(sess_id))
         logging.basicConfig(filename=logname, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         log = logging.getLogger()
+        log.info('api:synchronize_parameters')
 
         ok = False
 
@@ -482,7 +488,6 @@ class ParameterServer(object):
                 sess = ujson.loads(self.cache.get('best'))
                 sess["party"] = peers
             else:
-
                 # Always only wanna synchronize with the local parameters of peer with the best parameters
                 # not their globally best parameters, just the parameters they're using for this hyperedge
                 _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
@@ -711,6 +716,7 @@ class ParameterServer(object):
     def __establish_session(self, sess_id):
         # Setup logging for hyperedge
         log, log_path = utils.log(self.log_dir, '{}-{}'.format(self.me['id'], sess_id))
+        log.info('api:establish_session')
 
         while not self.edge_lock.acquire():
             sleep(0.1)
@@ -748,6 +754,7 @@ class ParameterServer(object):
             log_name = ujson.loads(self.cache.get(sess_id))["log"]
             logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             log = logging.getLogger()
+            log.info('api:get_parameters')
 
             model = ujson.loads(self.cache.get(sess_id))
             

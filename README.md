@@ -10,16 +10,19 @@ Hyper-parallel distributed training for deep neural networks
 - `pip install -r requirements.txt`
 - `sudo apt install libgl1-mesa-glx`
 
-#### Basic usage
+#### System Configuration
 
-Be sure to set the correct IP address for all party members before running.
+ - Be sure to set the correct IP address for all party members before running.
+ - Check IPs in `server.txt`
+
+
+#### Single Node Setup
 ```bash
-$ python smpl.py
-```
+Redis Setup
+cd smpl/redis_setup
+bash setup.sh
+bash install.sh
 
-
-#### Setup
-```
 Make smpl.py executable on all peers
 chmod +x smpl.py
 
@@ -29,6 +32,13 @@ cd bash/init
 bash start.sh
 
 Run `bash start.sh` from one of the nodes
+```
+
+#### Cluster Setup
+```bash
+bash sendall.sh
+cd smpl
+bash start.sh
 ```
 
 
