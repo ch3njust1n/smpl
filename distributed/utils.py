@@ -20,6 +20,7 @@ def log(directory, filename):
     handler = logging.FileHandler(filename=path)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
+    handler.createLock()
     logger.addHandler(handler)
     return logger, path
 

@@ -15,7 +15,7 @@ from time import sleep
 class ParameterChannel(object):
 
     def __init__(self, peers, logger=None):
-        self.logger = logger
+        self.log = logger
         self.peers = peers
         self.connections = {}
         self.status = 1
@@ -35,23 +35,23 @@ class ParameterChannel(object):
         # sock.settimeout(0.1)
         attempts = 0
 
-        self.logger.info('contacting: {}'.format(address))
         while address not in self.connections:
 
             # if attempts == self.setup_tries: break
 
             try:
+                self.log.debug('host:{}, port:{}'.format(peer['host'], peer['port']))
                 sock.connect((peer['host'], peer['port']))
                 self.connections[address] = sock
             except Exception as sock_err:
-                self.logger.info('Error: pc sock_err:{}'.format(sock_err))
+                self.log.exception('Exception: pc sock_err:{}'.format(sock_err))
 
                 if (sock_err.errno == socket.errno.ECONNREFUSED):
                     sleep(1)
-                    self.logger.info('Error: pc.setup() {}, addr: {}'.format(str(sock_err), address))
+                    self.log.error('Error: pc.setup() {}, addr: {}'.format(str(sock_err), address))
                     attempts += 1
 
-        self.logger.info('sucess {} connected'.format(address))
+        self.log.info('sucess {} connected'.format(address))
 
 
     '''
@@ -95,47 +95,28 @@ class ParameterChannel(object):
         try:
             resp = ''
             addr = '{}:{}'.format(host, port)
-
-            self.logger.info('pc.send() addr:{}'.format(addr))
-
             sock = self.connections[addr]
-
             msg = self.format(msg) + '\n'
-            self.logger.info('ps.send() msg:{}'.format(msg))
             sock.sendall(msg)
-
-            self.logger.info('pc.send() sent!')
             
             # Look for the response
             resp = sock.recv(4096).split('::')
-
-            self.logger.debug('pc.send() resp[0]:{}, len(resp[0]):{}'.format(resp[0], len(resp[0])))
+            self.log.debug('pc.send resp:{} type:{}'.format(resp, type(resp)))
             expected = int(resp[0])
-            
-            self.logger.info('pc.send() expected:{}'.format(expected))
-
             content = resp[1]
-
             received = len(content)
             remaining = expected - received
-
-            self.logger.info('pc.send() looking')
 
             while len(content) < expected:
                 content += sock.recv(min(expected - len(content), 4096))
                 received = len(content)
 
-            self.logger.info('pc.send() gotit!')
-
             # Received entire message
             ok = received == expected
-
             content = ujson.loads(content)
 
-            self.logger.info('pc.send() ok:{}'.format(ok))
-
         except Exception as e:
-            self.logger.info('Error: pc.send() '+str(e))
+            self.log.exception('Error: pc.send() '+str(e))
 
         return ok, content
 
@@ -149,9 +130,9 @@ class ParameterChannel(object):
             sock = self.connections[peer]
             sock.close()
             del self.connections[peer]
-            self.logger.info('closed socket {}'.format(peer))
+            self.log.info('closed socket {}'.format(peer))
         except KeyError as e:
-            self.logger.debug('{}\n{}'.format(e, self.connections))
+            self.log.error('{}\n{}'.format(e, self.connections))
 
 
     '''
@@ -170,4 +151,4 @@ class ParameterChannel(object):
 
         self.connections.clear()
 
-        self.logger.info('closed all connections')
+        self.log.info('closed all connections')

@@ -21,14 +21,10 @@ import logging, os
 
 
 class Network(nn.Module):
-    def __init__(self, seed=0):
+    def __init__(self, seed=0, log=None):
         super(Network, self).__init__()
         self.optimizer = optim.SGD
-
-        # Setup logging for hyperedge
-        log_name = os.path.join(os.getcwd(), 'logs', 'nn-{}.log'.format(utils.get_date()))
-        logging.basicConfig(filename=log_name, level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        log = logging.getLogger()
+        self.log = log
 
 
     '''
@@ -138,22 +134,22 @@ class Network(nn.Module):
     '''
     def multistep_grad(self, network, sparsify=False, tolist=False):
         # MAY NEED TO MAKE b IN EACH OF THESES CASES A TENSOR e.g. b.data-a instead of b-a
-        self.logger.debug('MSG network:{}\n ThisParam:{}'.format(network, str(self.get_parameters(reference=True))))
+        self.log.debug('MSG network:{}\n ThisParam:{}'.format(network, str(self.get_parameters(reference=True))))
         
         gradients = []
 
         if isinstance(network, Network):
-            self.logger.debug('MSG 0')
+            self.log.debug('MSG 0')
             gradients = [b-a for (b, a) in zip(sself.get_parameters(reference=True), network.parameters())]
         elif isinstance(network, list) and len(network) > 0:
             if isinstance(network[0], FloatTensor):
-                self.logger.debug('MSG 1')
+                self.log.debug('MSG 1')
                 gradients = [b-a for (b, a) in zip(self.get_parameters(reference=True), network)]
             elif isinstance(network[0], list):
-                self.logger.debug('MSG 2')
+                self.log.debug('MSG 2')
                 gradients = [b-FloatTensor(a) for (b, a) in zip(self.get_parameters(reference=True), network)]
         else:
-            self.logger.debug('MSG 3')
+            self.log.debug('MSG 3')
             raise Exception('Error: {} type not supported'.format(type(network)))
 
         return pt.largest_k(gradients) if sparsify else [g.data.tolist() for g in gradients] if tolist else gradients
@@ -271,8 +267,8 @@ class DevNet(Network):
 
 
 class DevNeuron(Network):
-    def __init__(self, seed):
-        super(DevNeuron, self).__init__(seed=seed)
+    def __init__(self, seed, log):
+        super(DevNeuron, self).__init__(seed=seed, log=log)
         self.loss = F.nll_loss
         self.fc1 = nn.Linear(2, 1)
 
