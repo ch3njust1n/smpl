@@ -67,6 +67,7 @@ class Trainer(object):
     Output: acc (float) - validation accuracy
     '''
     def validate(self):
+        self.log.info('validating model')
         self.network.eval()
         test_loss = 0
         correct = 0

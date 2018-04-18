@@ -222,6 +222,7 @@ class Network(nn.Module):
            avg (int, optional)
     '''
     def add_batched_coordinates(self, coords, avg=1):
+        self.log.debug('adding coords: {}'.format(coords))
         num_procs = cpu_count()
         self.share_memory()
         processes = []

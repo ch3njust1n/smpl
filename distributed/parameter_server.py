@@ -376,12 +376,12 @@ class ParameterServer(object):
         self.cache.set(sess_id, ujson.dumps(sess))
         sess = ujson.loads(self.cache.get(sess_id))
 
-
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], sparsify=True)
         self.__allreduce(sess_id, multistep, share[sess_id]['train_size'], log)
 
         # Final validation
+        # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
         nn.add_batched_coordinates(sess['gradients'], sess['samples'])
 
@@ -413,23 +413,30 @@ class ParameterServer(object):
                         )
                   ).start()
 
+        self.log.debug('finished async share_grad')
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
         while 1:
             share_count = ujson.loads(self.cache.get(sess_id))['share_count']
             if int(share_count) == len(sess['party']): break
             sleep(0.2)
+        self.log.debug('done asyn barrier')
+
 
     '''
     External API 
-    Receive gradients from peers
+    Receive gradients from peers.
 
     Inputs:  sess_id   (str)  Session id
              sender    (dict) Alias of sender
              gradients (list) Nested list of coordinate-gradient pairs
              samples   (int)  Number of samples sending peer used to generate given gradients
+    Output:  ok        (bool) Bool indicating that session exists and values were updated
     '''
     def __share_grad(self, sess_id, sender, gradients, samples):
+        if not self.cache.exists(sess_id):
+            return False
+
         sess = ujson.loads(self.cache.get(sess_id))
 
         # Get log
@@ -442,6 +449,9 @@ class ParameterServer(object):
         sess['share_count'] = 1 + int(sess['share_count'])
         sess['gradients'].append(gradients)
         sess['samples'] = samples + int(sess['samples'])
+        self.cache.set(sess_id, ujson.dumps(sess))
+
+        return True
 
 
     '''

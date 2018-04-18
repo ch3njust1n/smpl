@@ -19,7 +19,6 @@ class ParameterChannel(object):
         self.peers = peers
         self.connections = {}
         self.status = 1
-        self.setup_tries = 10
         self.setup()
 
 
@@ -37,19 +36,16 @@ class ParameterChannel(object):
 
         while address not in self.connections:
 
-            # if attempts == self.setup_tries: break
-
+            attempts += 1
             try:
                 self.log.debug('host:{}, port:{}'.format(peer['host'], peer['port']))
                 sock.connect((peer['host'], peer['port']))
                 self.connections[address] = sock
-            except Exception as sock_err:
-                self.log.exception('Exception: pc sock_err:{}'.format(sock_err))
-
-                if (sock_err.errno == socket.errno.ECONNREFUSED):
-                    sleep(1)
-                    self.log.error('Error: pc.setup() {}, addr: {}'.format(str(sock_err), address))
-                    attempts += 1
+            except socket.error as sock_err:
+                sleep(1)
+                self.log.error('{}, addr: {}'.format(str(sock_err), address))
+            except KeyError as key_err:
+                self.log.error(str(key_err))
 
         self.log.info('sucess {} connected'.format(address))
 
@@ -101,22 +97,27 @@ class ParameterChannel(object):
             
             # Look for the response
             resp = sock.recv(4096).split('::')
-            self.log.debug('pc.send resp:{} type:{}'.format(resp, type(resp)))
-            expected = int(resp[0])
-            content = resp[1]
-            received = len(content)
-            remaining = expected - received
-
-            while len(content) < expected:
-                content += sock.recv(min(expected - len(content), 4096))
+            self.log.debug('resp:{} type:{}'.format(resp, type(resp)))
+            if len(resp[0]) > 0:
+                expected = int(resp[0])
+                content = resp[1]
+                self.log.debug('expected: {} content:{}'.format(expected, content))
                 received = len(content)
+                remaining = expected - received
 
-            # Received entire message
-            ok = received == expected
-            content = ujson.loads(content)
+                while len(content) < expected:
+                    content += sock.recv(min(expected - len(content), 4096))
+                    received = len(content)
+
+                # Received entire message
+                ok = received == expected
+                content = ujson.loads(content)
+            else:
+                self.log.error('empty reply: {} for api:{}'.format(resp, msg))
+                content = ''
 
         except Exception as e:
-            self.log.exception('Error: pc.send() '+str(e))
+            self.log.exception(str(e))
 
         return ok, content
 
