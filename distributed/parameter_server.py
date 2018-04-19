@@ -336,6 +336,7 @@ class ParameterServer(object):
 
         # Setup variables for sharing gradients
         sess = ujson.loads(self.cache.get(sess_id))
+        log.debug('paramsHere? sess:{}'.format(sess))
         sess["share_count"] = 0
         sess["gradients"] = []
         sess["samples"] = 0
@@ -350,9 +351,8 @@ class ParameterServer(object):
         self.log.debug('created devneuron')
 
         # Pull synchronized session parameters
-        getSess = self.cache.get(sess_id)
-        sess = ujson.loads(getSess)
-        self.log.debug('pulled synched')
+        sess = ujson.loads(self.cache.get(sess_id))
+        self.log.debug('pulled synched sess:{}'.format(sess))
         nn.update_parameters(sess['parameters'])
         self.log.debug('updated params')
 
@@ -431,7 +431,7 @@ class ParameterServer(object):
         while 1:
             share_count = ujson.loads(self.cache.get(sess_id))['share_count']
             if int(share_count) == len(sess['party']): break
-            sleep(0.2)
+            sleep(random())
         self.log.debug('done asyn barrier')
 
 
@@ -493,25 +493,24 @@ class ParameterServer(object):
             sess = {}
 
             if best['host'] == self.me['host']:
+                log.debug('im best')
                 sess = ujson.loads(self.cache.get('best'))
                 sess["party"] = peers
             else:
                 # Always only wanna synchronize with the local parameters of peer with the best parameters
                 # not their globally best parameters, just the parameters they're using for this hyperedge
-                _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
-
-                if len(resp) > 0:
-                    ok = True
-                    best_params = resp[0]
-                    sess = {"parameters": resp[0], "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
+                resp = []
+                log.debug('getting params from: {}'.format(best['host']))
+                while len(resp) == 0:
+                    _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
+                    sleep(random())
+                log.debug('resp:{}, from: {}'.format(resp, best['host']))
+                ok = True
+                sess = {"parameters": resp[0], "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
             
-            sess["share_count"] = 0
-            sess["gradients"] = []
-            sess["samples"] = 0
-            ok = ok and self.cache.set(sess_id, ujson.dumps(sess))
+            ok = self.cache.set(sess_id, ujson.dumps(sess))
 
             # Start locally training
-            log.debug('ps.synchronize_parameters() init sess_id: {}'.format(sess_id))
             Process(target=self.__train, args=(sess_id,)).start()
         else:
             # Else parameters were explicitely given, so update with those
