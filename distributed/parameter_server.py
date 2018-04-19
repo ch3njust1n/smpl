@@ -329,6 +329,9 @@ class ParameterServer(object):
         - Hyper-parallelize with Hogwild!
         - Pass sess_id to Train so it can retrieve the session object from redis
         '''
+        if log == None:
+            log, log_path = utils.log(self.log_dir, 'train-{}'.format(sess_id))
+
         log.debug('ps.__train() sess_id:{}'.format(sess_id))
 
         # Setup variables for sharing gradients
@@ -344,11 +347,14 @@ class ParameterServer(object):
     
         # Each session should create its own model
         nn = net.DevNeuron(seed=self.seed, log=log)
+        self.log.debug('created devneuron')
 
         # Pull synchronized session parameters
         getSess = self.cache.get(sess_id)
         sess = ujson.loads(getSess)
+        self.log.debug('pulled synched')
         nn.update_parameters(sess['parameters'])
+        self.log.debug('updated params')
 
         if self.parallel == 'hogwild':
             nn.share_memory()
@@ -358,7 +364,7 @@ class ParameterServer(object):
         conf = (self.data, nn, sess_id, share, log, self.batch_size, self.cuda, self.drop_last, 
                 self.seed, self.shuffle)
         processes = []
-
+        self.log.debug('init worker train')
         for w in range(self.workers):
             p = Process(target=Train(conf).train)
             p.start()
@@ -368,6 +374,8 @@ class ParameterServer(object):
         for p in processes:
             p.join()
 
+        self.log.debug('done worker train')
+
         # Update session model rank
         sess = ujson.loads(self.cache.get(sess_id))
         sess["accuracy"] = share[sess_id]['acc']
@@ -376,9 +384,13 @@ class ParameterServer(object):
         self.cache.set(sess_id, ujson.dumps(sess))
         sess = ujson.loads(self.cache.get(sess_id))
 
+        self.log.debug('update model rank')
+
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], sparsify=True)
         self.__allreduce(sess_id, multistep, share[sess_id]['train_size'], log)
+
+        self.log.debug('allreduced')
 
         # Final validation
         # Retrieve gradients in session shared by peers

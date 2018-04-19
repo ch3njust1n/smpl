@@ -81,29 +81,34 @@ class Network(nn.Module):
            gradients (bool, optional)
     '''
     def update_parameters(self, params, gradients=False):
+        self.log.debug('update_parameters params:{}'.format(params))
         if type(params) != list:
             raise Exeception('InvalidTypeException: Expected a list of lists or a list of torch.FloatTensors')
 
         if len(params) > 0:
             if type(params[0]) == nn.parameter.Parameter:
+                self.log.debug('UP0')
                 for update, model in zip(params, self.parameters()):
                     if gradients:
                         model.grad.data = update.data
                     else:
                         model.data = update.data
             elif type(params[0]) == FloatTensor:
+                self.log.debug('UP1')
                 for update, model in zip(params, self.parameters()):
                     if gradients:
                         model.grad.data = update
                     else:
                         model.data = update
             elif type(params[0]) == list:
+                self.log.debug('UP2')
                 for update, model in zip(params, self.parameters()):
                     if gradients:
                         model.data = pt.list_to_tensor(update)
                     else:
                         model.data = pt.list_to_tensor(update)
             else:
+                self.log.debug('UP Err')
                 raise Exception('error: parameter type not supported <'+str(type(params))+'>')
 
 

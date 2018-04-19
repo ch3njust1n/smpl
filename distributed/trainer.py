@@ -17,14 +17,6 @@ import os, logging
 class Trainer(object):
     def __init__(self, batch_size, cuda, data, drop_last, network, shuffle, seed=-1):
 
-        logging.basicConfig(level=logging.ERROR)
-        self.log = logging.getLogger(__name__)
-        handler = logging.FileHandler(os.path.join(os.getcwd(),'logs/train.log'), mode='w')
-        handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.log.addHandler(handler)
-
         self.batch_size   = batch_size
         self.cuda         = cuda
         self.data         = data
@@ -67,7 +59,6 @@ class Trainer(object):
     Output: acc (float) - validation accuracy
     '''
     def validate(self):
-        self.log.info('validating model')
         self.network.eval()
         test_loss = 0
         correct = 0
