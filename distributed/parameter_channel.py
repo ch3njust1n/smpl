@@ -19,7 +19,7 @@ class ParameterChannel(object):
         self.peers = peers
         self.connections = {}
         self.status = 1
-        self.setup()
+        # self.setup()
 
 
     '''
@@ -47,7 +47,7 @@ class ParameterChannel(object):
             except KeyError as key_err:
                 self.log.error(str(key_err))
 
-        self.log.info('sucess {} connected'.format(address))
+        self.log.info('success {} connected'.format(address))
 
 
     '''

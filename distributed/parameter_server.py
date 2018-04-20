@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, 'data')
 
 from parameter_channel import ParameterChannel
-from multiprocessing import Process, Lock, Manager, cpu_count
+from multiprocessing import Process, Lock, Manager, cpu_count, Value
 from threading import Thread
 from random import random, getrandbits, shuffle, randint
 from time import sleep, time
@@ -112,6 +112,10 @@ class ParameterServer(object):
         self.cache.set('edges', 0)
         self.cache.set('epochs', 0)
 
+        # Setup TCP connections to all peers
+        #self.pc = Manager().Value('pc', ParameterChannel(self.peers, logger=self.log))
+        self.pc = ParameterChannel(self.peers, logger=self.log)
+
         # Establish ports for receiving API calls
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -119,8 +123,8 @@ class ParameterServer(object):
         self.sock.listen(1)
         Thread(target=self.__listen).start()
 
-        # Setup TCP connections to all peers
-        self.pc = ParameterChannel(self.peers, logger=self.log)
+        # self.pc = ParameterChannel(self.peers, logger=self.log)
+        self.pc.setup()
 
         # Init training
         self.__async_train()
@@ -221,6 +225,10 @@ class ParameterServer(object):
     Output: str
     '''
     def __format_msg(self, msg):
+        try:
+            iter(msg)
+        except TypeError, te:
+            msg = str(msg)
         return ''.join([str(len(msg)), '::', ujson.dumps(msg)])
 
 
@@ -348,13 +356,13 @@ class ParameterServer(object):
     
         # Each session should create its own model
         nn = net.DevNeuron(seed=self.seed, log=log)
-        self.log.debug('created devneuron')
+        log.debug('created devneuron')
 
         # Pull synchronized session parameters
         sess = ujson.loads(self.cache.get(sess_id))
-        self.log.debug('pulled synched sess:{}'.format(sess))
+        log.debug('pulled synched sess:{}'.format(sess))
         nn.update_parameters(sess['parameters'])
-        self.log.debug('updated params')
+        log.debug('updated params')
 
         if self.parallel == 'hogwild':
             nn.share_memory()
@@ -364,7 +372,7 @@ class ParameterServer(object):
         conf = (self.data, nn, sess_id, share, log, self.batch_size, self.cuda, self.drop_last, 
                 self.seed, self.shuffle)
         processes = []
-        self.log.debug('init worker train')
+        log.debug('init worker train')
         for w in range(self.workers):
             p = Process(target=Train(conf).train)
             p.start()
@@ -374,7 +382,7 @@ class ParameterServer(object):
         for p in processes:
             p.join()
 
-        self.log.debug('done worker train')
+        log.debug('done worker train')
 
         # Update session model rank
         sess = ujson.loads(self.cache.get(sess_id))
@@ -384,17 +392,18 @@ class ParameterServer(object):
         self.cache.set(sess_id, ujson.dumps(sess))
         sess = ujson.loads(self.cache.get(sess_id))
 
-        self.log.debug('update model rank')
+        log.debug('update model rank')
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], sparsify=True)
         self.__allreduce(sess_id, multistep, share[sess_id]['train_size'], log)
 
-        self.log.debug('allreduced')
+        log.debug('allreduced')
 
         # Final validation
         # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
+        sess['samples'] = 1 # remove this later
         nn.add_batched_coordinates(sess['gradients'], sess['samples'])
 
         conf = (self.data, nn, sess_id, share, self.batch_size, self.cuda, self.drop_last, 
@@ -421,11 +430,9 @@ class ParameterServer(object):
         for send_to in sess['party']:
             Thread(target=self.pc.send, 
                    args=(send_to['host'], send_to['port'], 
-                         {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]}
-                        )
-                  ).start()
+                         {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
 
-        self.log.debug('finished async share_grad')
+        log.debug('finished async share_grad')
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
         while 1:
@@ -477,7 +484,7 @@ class ParameterServer(object):
             accuracy   (int)  Accuracy associated with given model
     Output: ok         (bool) Flag indicating that sess importation was set in cache correctly
     '''
-    def __synchronize_parameters(self, sess_id, best, peers, parameters=[], accuracy=0):
+    def __synchronize_parameters(self, sess_id, best, peers, sender, parameters=[], accuracy=0):
         # Get log
         logname = ujson.loads(self.cache.get(sess_id))
         logging.basicConfig(filename=logname, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -485,6 +492,7 @@ class ParameterServer(object):
         log.info('api:synchronize_parameters')
 
         ok = False
+        peers.append(sender)
 
         # If not explicitely given parameters and accuracy, retrieve parameters from the specified best peer
         if len(parameters) == 0:
@@ -551,20 +559,23 @@ class ParameterServer(object):
         model = []
         args = []
         cond = best['alias'] != sess['me']['alias']
+
         if cond:
             ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
-            args = [sess_id, best, peers]
+            args = [sess_id, best, peers[:], self.me]
         else:
             model = ujson.loads(self.cache.get('best'))
             # send sess_id, parameters, and model accuracy to all peers
-            args = [sess_id, best, peers, model[0], model[1]]
+            args = [sess_id, best, peers[:], self.me, model[0], model[1]]
 
         # Synchronize parameters of model with best validation accuracy
-        for send_to in peers:
+        for i, send_to in enumerate(peers):
+            args[2].pop(i)
             Thread(target=self.pc.send, 
                 args=(send_to['host'], send_to['port'],
                       {"api": "synchronize_parameters", "args": args},)).start()
 
+        log.debug('party:{}'.format(peers))
         log.debug('ps.__init_session model:{}'.format(model))
         # save parameters so can calculate difference (gradient) after training
         self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 

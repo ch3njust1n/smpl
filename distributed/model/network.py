@@ -237,11 +237,13 @@ class Network(nn.Module):
         sorted_coords = sorted(coords, key=lambda x: x[0][0])
 
         for l in sorted_coords:
+            self.log.debug('what is l? {}'.format(l))
             layer = l[0][0]
-            if layer in params_coords:
-                params_coords[layer].append(l)
+            self.log.debug('layer:{}'.format(layer))
+            if layer[0] in params_coords:
+                params_coords[layer[0]].append(l)
             else:
-                params_coords[layer] = [l]
+                params_coords[layer[0]] = l
 
         # update parameters in parallel
         for k in params_coords.keys():
