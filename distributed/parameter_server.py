@@ -369,10 +369,12 @@ class ParameterServer(object):
 
         # DistributedTrainer constructor parameters
         # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
-        conf = (self.data, nn, sess_id, share, log, self.batch_size, self.cuda, self.drop_last, 
-                self.seed, self.shuffle)
+        self.seed=18
+        conf = (log, sess_id, share, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
+        log.debug('me:{} pid:{} conf:{}'.format(self.me['id'], os.getpid(), str(conf)))
         processes = []
         log.debug('init worker train')
+        
         for w in range(self.workers):
             p = Process(target=Train(conf).train)
             p.start()
@@ -404,10 +406,10 @@ class ParameterServer(object):
         # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
         sess['samples'] = 1 # remove this later
+        log.debug('grads:{}'.format(sess['gradients']))
         nn.add_batched_coordinates(sess['gradients'], sess['samples'])
 
-        conf = (self.data, nn, sess_id, share, self.batch_size, self.cuda, self.drop_last, 
-                self.seed, self.shuffle)
+        conf = (log, sess_id, share, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         Train(conf).validate()
 
 

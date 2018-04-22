@@ -15,8 +15,8 @@ import os, logging
 
 
 class Trainer(object):
-    def __init__(self, batch_size, cuda, data, drop_last, network, shuffle, seed=-1):
-
+    def __init__(self, network, data, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1):
+        super(Trainer, self).__init__()
         self.batch_size   = batch_size
         self.cuda         = cuda
         self.data         = data
@@ -98,9 +98,9 @@ class Trainer(object):
 
 
 class DistributedTrainer(Trainer):
-    def __init__(self, data, network, sess_id, share, batch_size=1, cuda=False, 
-                 drop_last=False, seed=-1, shuffle=True):
-        super(DistributedTrainer, self).__init__(batch_size, cuda, data, drop_last, network, shuffle, seed)
+    def __init__(self, sess_id, share, network, data, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1):
+        super(DistributedTrainer, self).__init__(network, data, batch_size=batch_size, cuda=cuda, 
+                                                 drop_last=drop_last, shuffle=shuffle, seed=seed)
 
         self.pid     = current_process().pid
         self.sess_id = sess_id
@@ -120,12 +120,12 @@ class DistributedTrainer(Trainer):
 Trainer for development only. Loads MNIST dataset on every worker.
 '''
 class DevTrainer(DistributedTrainer):
-    def __init__(self, data, network, sess_id, share, log, batch_size=1, cuda=False, 
-                 drop_last=False, seed=-1, shuffle=True):
-        super(DevTrainer, self).__init__(data, network, sess_id, share, batch_size, cuda, drop_last, seed, shuffle)
+    def __init__(self, log, sess_id, share, network, data, batch_size=1, cuda=False, drop_last=False, 
+                 shuffle=True, seed=-1):
+        super(DevTrainer, self).__init__(sess_id, share, network, data, batch_size, cuda, drop_last, shuffle, seed)
+        self.log = log
         self.total_val   = 0
         self.total_train = 0
-        self.log = log
 
 
     def load_data(self):
