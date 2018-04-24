@@ -304,14 +304,22 @@ class ParameterServer(object):
 
         # establish clique
         while len(sess_id) == 0:
-            sess_id = self.__init_session(log=log)
+            sess_id = self.__init_session(log=log, log_path=log_path)
             sleep(1)
 
-        log.info('sess_id: {}'.format(sess_id))
-        self.__train(sess_id, log)
+        log.debug('initiating sess_id: {}'.format(sess_id))
+        
+        # Save log file path
+        sess = ujson.loads(self.cache.get(sess_id))
+        sess["log"] = log_path
+        log.debug('justadded log?: {}'.format(sess))
+        self.cache.set(sess_id, ujson.dumps(sess))
+        log.debug('justadded sess?: {}'.format(ujson.loads(self.cache.get(sess_id))))
+
+        sess = self.__train(sess_id, log)
 
         # compare recently trained hyperedge model with current best
-        self.update_model(sess_id)
+        self.update_model('best', sess['parameters'], sess['accuracy'], log)
 
         # clean up parameter cache and gradient queue
         self.cache.delete(sess_id)
@@ -350,10 +358,6 @@ class ParameterServer(object):
         sess["samples"] = 0
         self.cache.set(sess_id, ujson.dumps(sess))
 
-        # Share dictionary across HogWild! processes to count number of samples
-        share = Manager().dict()
-        share[sess_id] = {"train_size": 0, "val_size": 0, 'acc': 0}
-    
         # Each session should create its own model
         nn = net.DevNeuron(seed=self.seed, log=log)
         log.debug('created devneuron')
@@ -366,6 +370,52 @@ class ParameterServer(object):
 
         if self.parallel == 'hogwild':
             nn.share_memory()
+
+        share = self.__local_train(sess_id, nn, log)
+
+        # Update session model rank
+        sess = ujson.loads(self.cache.get(sess_id))
+        sess["accuracy"] = share[sess_id]['acc']
+        sess["val_size"] = share[sess_id]['val_size']
+        sess["train_size"] = share[sess_id]['train_size']
+        self.cache.set(sess_id, ujson.dumps(sess))
+        sess = ujson.loads(self.cache.get(sess_id))
+
+        log.debug('beforeCalling sess_id:{}'.format(sess_id))
+
+        # Multi-step gradient between synchronized parameters and locally updated parameters
+        multistep = nn.multistep_grad(sess['parameters'], sparsify=True)
+        self.__allreduce(sess_id, multistep, share[sess_id]['train_size'], log)
+
+        log.debug('allreduced')
+
+        # Final validation
+        # Retrieve gradients in session shared by peers
+        sess = ujson.loads(self.cache.get(sess_id))
+        sess['samples'] = 1 # remove this later
+        log.debug('grads:{}'.format(sess['gradients']))
+        nn.add_batched_coordinates(sess['gradients'], sess['samples'])
+
+        # Validate model accuracy
+        conf = (log, sess_id, share, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
+        sess["accuracy"] = Train(conf).validate()
+        self.cache.set(sess_id, ujson.dumps(sess))
+
+        return sess
+
+
+    '''
+    Function for initiating local training
+
+    Input:  sess_id (string)
+            nn      (nn.Module)
+            log     (Logger)
+    Output: share   (dict)      Dictionary containing accuracy, validation size, and training size
+    '''
+    def __local_train(self, sess_id, nn, log):
+        # Share dictionary across HogWild! processes to count number of samples
+        share = Manager().dict()
+        share[sess_id] = {"train_size": 0, "val_size": 0, 'acc': 0}
 
         # DistributedTrainer constructor parameters
         # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
@@ -386,31 +436,7 @@ class ParameterServer(object):
 
         log.debug('done worker train')
 
-        # Update session model rank
-        sess = ujson.loads(self.cache.get(sess_id))
-        sess["accuracy"] = share[sess_id]['acc']
-        sess["val_size"] = share[sess_id]['val_size']
-        sess["train_size"] = share[sess_id]['train_size']
-        self.cache.set(sess_id, ujson.dumps(sess))
-        sess = ujson.loads(self.cache.get(sess_id))
-
-        log.debug('update model rank')
-
-        # Multi-step gradient between synchronized parameters and locally updated parameters
-        multistep = nn.multistep_grad(sess['parameters'], sparsify=True)
-        self.__allreduce(sess_id, multistep, share[sess_id]['train_size'], log)
-
-        log.debug('allreduced')
-
-        # Final validation
-        # Retrieve gradients in session shared by peers
-        sess = ujson.loads(self.cache.get(sess_id))
-        sess['samples'] = 1 # remove this later
-        log.debug('grads:{}'.format(sess['gradients']))
-        nn.add_batched_coordinates(sess['gradients'], sess['samples'])
-
-        conf = (log, sess_id, share, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
-        Train(conf).validate()
+        return share
 
 
     '''
@@ -427,6 +453,8 @@ class ParameterServer(object):
     def __allreduce(self, sess_id, gradients, sample_size, log=None):
         log.debug('ps.__allreduce sess_id:{}'.format(sess_id))
         sess = ujson.loads(self.cache.get(sess_id))
+
+        log.debug('calling ps.share_grad() sess_id: {}, sess:{}, gradients: {}'.format(sess_id, sess, gradients))
 
         # Async send gradients to all peers in hyperedge
         for send_to in sess['party']:
@@ -461,16 +489,19 @@ class ParameterServer(object):
         sess = ujson.loads(self.cache.get(sess_id))
 
         # Get log
-        log_name = sess["log"]
-        logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        log = logging.getLogger()
-        log.info('api:share_grad')
+        try:
+            log_name = sess["log"]
+            logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            log = logging.getLogger()
+            log.info('api:share_grad')
 
-        log.debug('ps.share_grad() alias:{}, sess_id:{}, gradients:{}'.format(self.me['alias'], sess_id, sess))
-        sess['share_count'] = 1 + int(sess['share_count'])
-        sess['gradients'].append(gradients)
-        sess['samples'] = samples + int(sess['samples'])
-        self.cache.set(sess_id, ujson.dumps(sess))
+            log.debug('alias:{}, sess_id:{}, sess:{}'.format(self.me['alias'], sess_id, sess))
+            sess['share_count'] = 1 + int(sess['share_count'])
+            sess['gradients'].append(gradients)
+            sess['samples'] = samples + int(sess['samples'])
+            self.cache.set(sess_id, ujson.dumps(sess))
+        except KeyError as e:
+            self.log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
 
         return True
 
@@ -506,6 +537,7 @@ class ParameterServer(object):
                 log.debug('im best')
                 sess = ujson.loads(self.cache.get('best'))
                 sess["party"] = peers
+                parameters = sess["parameters"]
             else:
                 # Always only wanna synchronize with the local parameters of peer with the best parameters
                 # not their globally best parameters, just the parameters they're using for this hyperedge
@@ -516,15 +548,20 @@ class ParameterServer(object):
                     sleep(random())
                 log.debug('resp:{}, from: {}'.format(resp, best['host']))
                 ok = True
-                sess = {"parameters": resp[0], "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
+                parameters = resp[0]
+                sess = {"parameters": parameters, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
             
+            sess.update(ujson.loads(self.cache.get(sess_id)))
+            log.debug('updatedShit: {}, sess_id: {}'.format(sess, sess_id))
             ok = self.cache.set(sess_id, ujson.dumps(sess))
-
-            # Start locally training
-            Process(target=self.__train, args=(sess_id,)).start()
         else:
             # Else parameters were explicitely given, so update with those
             ok = self.update_model(sess_id, parameters, accuracy)
+
+        # Start locally training
+        nn = net.DevNeuron(seed=self.seed, log=log)
+        nn.update_parameters(parameters)
+        Process(target=self.__local_train, args=(sess_id, nn, log,)).start()
 
         return ok
 
@@ -536,7 +573,7 @@ class ParameterServer(object):
     Output: ok      (bool)
             sess_id (string)
     '''
-    def __init_session(self, log=None):
+    def __init_session(self, log=None, log_path=''):
         log.info('ps.__init_session')
         ok = False
         sess_id = ''.join(['sess', str(getrandbits(randint(1,256)))])
@@ -570,6 +607,8 @@ class ParameterServer(object):
             # send sess_id, parameters, and model accuracy to all peers
             args = [sess_id, best, peers[:], self.me, model[0], model[1]]
 
+        log.debug('calling ps.synchronize_parameters sess_id: {}'.format(sess_id))
+
         # Synchronize parameters of model with best validation accuracy
         for i, send_to in enumerate(peers):
             args[2].pop(i)
@@ -581,7 +620,8 @@ class ParameterServer(object):
         log.debug('ps.__init_session model:{}'.format(model))
         # save parameters so can calculate difference (gradient) after training
         self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
-                                            "train_size": 0, "party": peers, "pid": 0, "losses": []}))
+                                            "train_size": 0, "party": peers, "pid": 0, "losses": [],
+                                            "log": log_path}))
 
         if not self.cache.exists(sess_id):
             log.error('Error: key insertion failure {}'.format(sess_id))
@@ -695,6 +735,7 @@ class ParameterServer(object):
         unique = self.get_unique_clique(self.peers, log=log)
         peers = []
         responses = []
+        log.debug('calling ps.establish_session() sess_id: {}'.format(sess['id']))
 
         # Note: Parallelize this!!!
         for send_to in unique:
@@ -740,7 +781,8 @@ class ParameterServer(object):
             # CHECK FOR UNIQUE HYPEREDGES AGAIN AND IF A SESSION IN THE CACHE ALREADY HAS ALL THESE
             # PEERS EXACTLY, THEN ABORT THIS CURRENT SESSION
             log.debug('saving session')
-            self.cache.set(sess_id, ujson.dumps({"id": sess_id, "peers": [], "log": log_path}))
+            self.cache.set(sess_id, ujson.dumps({"id": sess_id, "peers": [], "log": log_path,
+                                                 "share_count": 0, "gradients": [], "samples": 0}))
         self.edge_lock.release()
         
         return me
