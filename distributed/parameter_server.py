@@ -182,10 +182,12 @@ class ParameterServer(object):
 
                 packet = conn.recv(4096)
 
-                # if peer closes connection, then remove that peer from PC connections
-                if len(packet) == 0:
-                    self.pc.remove('{}:{}'.format(addr[0], addr[1]))
-                    break
+                # # if peer closes connection, then remove that peer from PC connections
+                # if len(packet) == 0:
+                #     addr = '{}:{}'.format(addr[0], addr[1])
+                #     self.log.info('removing: {}'.format(addr))
+                #     self.pc.remove(addr)
+                #     break
 
                 msg = packet.split('::')
 
@@ -330,6 +332,7 @@ class ParameterServer(object):
         self.cache.set('epochs', int(self.cache.get('epochs'))+1)
         self.cache.set('edges', int(self.cache.get('edges'))-1)
         self.count_lock.release()
+        log.info('hyperedge training complete')
 
 
     '''
@@ -386,7 +389,7 @@ class ParameterServer(object):
 
         # Validate model accuracy
         conf = (log, sess_id, share, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
-        sess["accuracy"] = Train(conf).validate()
+        # sess["accuracy"] = Train(conf).validate() # Commented out for now. Refer to issue #44
         self.cache.set(sess_id, ujson.dumps(sess))
 
         return sess
@@ -637,6 +640,7 @@ class ParameterServer(object):
     Output: ok         (bool)   Flag indicating if model was updated
     '''
     def update_model(self, sess_id, parameters, accuracy, log=None):
+        log.debug('updating model')
         model = ujson.loads(self.cache.get(sess_id))
         ok = False
 

@@ -212,7 +212,7 @@ class Network(nn.Module):
 
         # update parameters with gradients at particular coordinates
         grads = sparse.FloatTensor(i.t(), v, Size(s)).to_dense()
-        params[index].grad.data += grads
+        # params[index].grad.data += grads # Commenting out for now. Refer to issue #48
 
 
     '''

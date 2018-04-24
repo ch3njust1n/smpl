@@ -104,6 +104,10 @@ class ParameterChannel(object):
         try:
             resp = ''
             addr = '{}:{}'.format(host, port)
+            
+            if addr not in self.connections:
+                return False, ''
+
             sock = self.connections[addr]
             msg = self.format(msg) + '\n'
             sock.sendall(msg)
@@ -140,13 +144,13 @@ class ParameterChannel(object):
     '''
     def remove(self, peer):
 
-        try:
+        if peer in self.connections:
             sock = self.connections[peer]
             sock.close()
             del self.connections[peer]
             self.log.info('closed socket {}'.format(peer))
-        except KeyError as e:
-            self.log.error('{}\n{}'.format(e, self.connections))
+        else:
+            self.log.info('Could not remove peer: {}'.format(peer))
 
 
     '''
