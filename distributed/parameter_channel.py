@@ -76,6 +76,19 @@ class ParameterChannel(object):
 
 
     '''
+    Send message to all peers in parallel. This function will not indicate if all
+    messages were sent.
+
+    Input:  msg   (string) Message to be sent
+            peers (list)   List of dictionaries with peer information
+    '''
+    def sendall(self, peers, api, arguments):
+        for send_to in peers:
+            Thread(target=self.send, args=(send_to['host'], send_to['port'], 
+                                          {"api": api, "args": arguments},)).start()
+
+
+    '''
     Use to communicate with peer via TCP
 
     Input:  host (string) IP address

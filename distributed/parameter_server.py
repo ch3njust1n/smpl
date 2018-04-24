@@ -352,21 +352,10 @@ class ParameterServer(object):
 
         # Setup variables for sharing gradients
         sess = ujson.loads(self.cache.get(sess_id))
-        log.debug('paramsHere? sess:{}'.format(sess))
-        sess["share_count"] = 0
-        sess["gradients"] = []
-        sess["samples"] = 0
-        self.cache.set(sess_id, ujson.dumps(sess))
 
         # Each session should create its own model
         nn = net.DevNeuron(seed=self.seed, log=log)
-        log.debug('created devneuron')
-
-        # Pull synchronized session parameters
-        sess = ujson.loads(self.cache.get(sess_id))
-        log.debug('pulled synched sess:{}'.format(sess))
         nn.update_parameters(sess['parameters'])
-        log.debug('updated params')
 
         if self.parallel == 'hogwild':
             nn.share_memory()
@@ -379,13 +368,12 @@ class ParameterServer(object):
         sess["val_size"] = share[sess_id]['val_size']
         sess["train_size"] = share[sess_id]['train_size']
         self.cache.set(sess_id, ujson.dumps(sess))
-        sess = ujson.loads(self.cache.get(sess_id))
 
         log.debug('beforeCalling sess_id:{}'.format(sess_id))
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], sparsify=True)
-        self.__allreduce(sess_id, multistep, share[sess_id]['train_size'], log)
+        self.__allreduce(sess_id, sess, multistep, share[sess_id]['train_size'], log)
 
         log.debug('allreduced')
 
@@ -450,10 +438,7 @@ class ParameterServer(object):
                                to calculate the weighted contribution of this 
                                peer's gradients
     '''
-    def __allreduce(self, sess_id, gradients, sample_size, log=None):
-        log.debug('ps.__allreduce sess_id:{}'.format(sess_id))
-        sess = ujson.loads(self.cache.get(sess_id))
-
+    def __allreduce(self, sess_id, sess, gradients, sample_size, log=None):
         log.debug('calling ps.share_grad() sess_id: {}, sess:{}, gradients: {}'.format(sess_id, sess, gradients))
 
         # Async send gradients to all peers in hyperedge
@@ -469,7 +454,7 @@ class ParameterServer(object):
             share_count = ujson.loads(self.cache.get(sess_id))['share_count']
             if int(share_count) == len(sess['party']): break
             sleep(random())
-        self.log.debug('done asyn barrier')
+        self.log.debug('done sync barrier')
 
 
     '''
@@ -495,7 +480,7 @@ class ParameterServer(object):
             log = logging.getLogger()
             log.info('api:share_grad')
 
-            log.debug('alias:{}, sess_id:{}, sess:{}'.format(self.me['alias'], sess_id, sess))
+            log.debug('sender: {}, alias:{}, sess_id:{}, sess:{}'.format(sender, self.me['alias'], sess_id, sess))
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
             sess['samples'] = samples + int(sess['samples'])
@@ -561,7 +546,7 @@ class ParameterServer(object):
         # Start locally training
         nn = net.DevNeuron(seed=self.seed, log=log)
         nn.update_parameters(parameters)
-        Process(target=self.__local_train, args=(sess_id, nn, log,)).start()
+        Process(target=self.__train, args=(sess_id, log,)).start()
 
         return ok
 
@@ -618,10 +603,11 @@ class ParameterServer(object):
 
         log.debug('party:{}'.format(peers))
         log.debug('ps.__init_session model:{}'.format(model))
+
         # save parameters so can calculate difference (gradient) after training
         self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
                                             "train_size": 0, "party": peers, "pid": 0, "losses": [],
-                                            "log": log_path}))
+                                            "log": log_path, "share_count": 0, "samples": 0, "gradients": []}))
 
         if not self.cache.exists(sess_id):
             log.error('Error: key insertion failure {}'.format(sess_id))
