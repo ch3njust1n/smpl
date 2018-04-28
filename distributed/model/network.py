@@ -11,7 +11,7 @@
 
 from .. import utils
 from .. import parameter_tools as pt
-from torch import FloatTensor, LongTensor, zeros, stack, sparse, Size
+from torch import FloatTensor, LongTensor, zeros, stack, sparse, Size, manual_seed
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.optim as optim
@@ -81,9 +81,9 @@ class Network(nn.Module):
            gradients (bool, optional)
     '''
     def update_parameters(self, params, gradients=False):
-        self.log.debug('update_parameters params:{}'.format(params))
+        # self.log.debug('update_parameters params:{}'.format(params))
         if type(params) != list:
-            raise Exeception('InvalidTypeException: Expected a list of lists or a list of torch.FloatTensors')
+            raise Exception('InvalidTypeException: Recevied {},but expected a list of lists or a list of torch.FloatTensors'.format(type(params)))
 
         if len(params) > 0:
             if type(params[0]) == nn.parameter.Parameter:
@@ -138,9 +138,7 @@ class Network(nn.Module):
     Output: gradients (list) A list of torch.FloatTensors representing the difference between the network parameters
     '''
     def multistep_grad(self, network, sparsify=False, tolist=False):
-        # MAY NEED TO MAKE b IN EACH OF THESES CASES A TENSOR e.g. b.data-a instead of b-a
-        self.log.debug('MSG network:{}\n ThisParam:{}'.format(network, str(self.get_parameters(reference=True))))
-        
+        # MAY NEED TO MAKE b IN EACH OF THESES CASES A TENSOR e.g. b.data-a instead of b-a        
         gradients = []
 
         if isinstance(network, Network):
@@ -237,9 +235,9 @@ class Network(nn.Module):
         sorted_coords = sorted(coords, key=lambda x: x[0][0])
 
         for l in sorted_coords:
-            self.log.debug('what is l? {}'.format(l))
+            # self.log.debug('what is l? {}'.format(l))
             layer = l[0][0]
-            self.log.debug('layer:{}'.format(layer))
+            # self.log.debug('layer:{}'.format(layer))
             if layer[0] in params_coords:
                 params_coords[layer[0]].append(l)
             else:
@@ -260,23 +258,22 @@ Network used for development only.
 Train on MNIST
 '''
 class DevNet(Network):
-    def __init__(self):
-        super(DevNet, self).__init__()
+    def __init__(self, seed, log):
+        super(DevNet, self).__init__(seed=seed, log=log)
+        manual_seed(seed)
         self.loss = F.nll_loss
         self.fc1 = nn.Linear(784, 10)
-        self.fc2 = nn.Linear(10, 10)
 
 
     def forward(self, x):
         x = x.view(-1, 784)
-        x = F.sigmoid(self.fc1(x))
-
-        return F.log_softmax(self.fc2(x))
+        return F.log_softmax(self.fc1(x))
 
 
 class DevNeuron(Network):
     def __init__(self, seed, log):
         super(DevNeuron, self).__init__(seed=seed, log=log)
+        manual_seed(seed)
         self.loss = F.nll_loss
         self.fc1 = nn.Linear(2, 1)
 

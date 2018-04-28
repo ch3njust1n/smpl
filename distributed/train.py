@@ -52,29 +52,27 @@ class Train(DevTrainer):
     '''            
     def train(self):
         
-        # for ep in range(0, self.epochs):
-        #     self.network.train()
+        for ep in range(0, self.epochs):
+            self.network.train()
+            ep_loss = 0
 
-        #     for batch_idx, (data, target) in enumerate(self.train_loader):
-        #         batch_size = len(data)
-        #         data = Variable(pt.to_cuda(data, cuda=self.cuda))
-        #         target = Variable(pt.to_cuda(target, cuda=self.cuda))
+            for batch_idx, (data, target) in enumerate(self.train_loader):
+                batch_size = len(data)
+                data = Variable(pt.to_cuda(data, cuda=self.cuda))
+                target = Variable(pt.to_cuda(target, cuda=self.cuda))
 
-        #         self.optimizer.zero_grad()
-        #         loss = self.network.loss(self.network(data), target)
-        #         loss.backward()
-        #         self.losses.append(loss.data.tolist()[0])
+                self.optimizer.zero_grad()
+                loss = self.network.loss(self.network(data), target)
+                loss.backward()
+                ep_loss += loss.data.tolist()[0]
 
-        #         if ep+1 % self.epoch == 0:
-        #             self.log(self.pid, ep, loss, batch_idx, batch_size)
-
-        #         self.optimizer.step()
-        #         self.validations.append(self.validate())
-
-        # Must call to share train size and 
-        # validation size with parameter server
-        # self.share()
-        self.log.debug('Train.train() before:{}'.format([p.data.tolist() for p in self.network.parameters()]))
-        for p in self.network.parameters():
-            p.data += 1
-        self.log.debug('Train.train() after:{}'.format([p.data.tolist() for p in self.network.parameters()]))
+                self.optimizer.step()
+                self.validations.append(self.validate())
+            self.log.info('pid:{}, ep:{}, loss:{}, batch_idx:{}, batch_size:{}'.format(self.pid, ep, loss, batch_idx, batch_size))
+            self.validations.append(2)
+            self.ep_losses.append(list(range(0,3)))
+            # self.ep_losses.append(ep_loss/self.num_train_batches)
+            # Must call to share train size and 
+            # validation size with parameter server
+            self.share()
+            self.log.debug('sharing training statistics')

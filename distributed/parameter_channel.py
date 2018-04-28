@@ -72,7 +72,8 @@ class ParameterChannel(object):
     Output: (string) response
     '''
     def format(self, msg):
-        return ''.join([str(len(msg)), '::', ujson.dumps(msg)])
+        msg = ujson.dumps(msg)
+        return '{}::{}'.format(len(msg), msg)
 
 
     '''
@@ -114,11 +115,16 @@ class ParameterChannel(object):
             
             # Look for the response
             resp = sock.recv(4096).split('::')
-            self.log.debug('resp:{} type:{}'.format(resp, type(resp)))
+            # self.log.debug('resp:{}'.format(resp))
             if len(resp[0]) > 0:
-                expected = int(resp[0])
+                expected = 0
+                try:
+                    expected = int(resp[0])
+                except ValueError as e:
+                    return False, ''
+
                 content = resp[1]
-                self.log.debug('expected: {} content:{}'.format(expected, content))
+                # self.log.debug('resp[0]: {}, resp[1]: {}, expected: {} content:{}'.format(resp[0], resp[1], expected, content))
                 received = len(content)
                 remaining = expected - received
 
@@ -128,6 +134,9 @@ class ParameterChannel(object):
 
                 # Received entire message
                 ok = received == expected
+                if not ok:
+                    raise Exception('Did not receive entire response. received:{} expected:{}'.format(received, expected))
+                    return False, ''
                 content = ujson.loads(content)
             else:
                 self.log.error('empty reply: {} for api:{}'.format(resp, msg))

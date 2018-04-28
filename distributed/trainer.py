@@ -7,33 +7,37 @@
 
 from torch import manual_seed
 from torchvision import transforms
+from torch.autograd import Variable
 import torchvision.datasets as datasets
 from torch.utils.data import TensorDataset, DataLoader
-from multiprocessing import cpu_count, current_process
+from multiprocessing import current_process
 import parameter_tools as pt
-import os, logging
+import os, logging, ujson
 
 
 class Trainer(object):
     def __init__(self, network, data, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1):
         super(Trainer, self).__init__()
-        self.batch_size   = batch_size
-        self.cuda         = cuda
-        self.data         = data
-        self.drop_last    = drop_last
-        self.epochs       = 1
-        self.log_interval = 1
-        self.losses       = []
-        self.network      = network
-        self.seed         = seed
-        self.shuffle      = shuffle
-        self.train_loader = None
-        self.train_path   = os.path.join(data, 'train')
-        self.train_size   = 0
-        self.val_loader   = None
-        self.val_path     = os.path.join(data, 'val')
-        self.val_size     = 0
-        self.validations  = []
+        self.batch_size        = batch_size
+        self.cuda              = cuda
+        self.data              = data
+        self.drop_last         = drop_last
+        self.ep_losses         = []
+        self.epochs            = 1
+        self.log_interval      = 1
+        self.network           = network
+        self.num_train_batches = 0
+        self.num_val_batches   = 0
+        self.seed              = seed
+        self.shuffle           = shuffle
+        self.train_loader      = None
+        self.train_path        = os.path.join(data, 'train')
+        self.train_size        = 0
+        self.val_loader        = None
+        self.val_path          = os.path.join(data, 'val')
+        self.val_size          = 0
+        self.validations       = []
+        self.dud               = 'TESTING123'
 
         if self.seed != -1:
             manual_seed(self.seed)
@@ -48,11 +52,14 @@ class Trainer(object):
     def load_data(self):
         # Load data
         self.train_loader = DataLoader(datasets.ImageFolder(self.train_path), batch_size=self.batch_size, 
-                                       num_workers=cpu_count(), drop_last=self.drop_last, shuffle=self.shuffle)
+                                       num_workers=os.cpu_count(), drop_last=self.drop_last, shuffle=self.shuffle)
         self.val_loader   = DataLoader(datasets.ImageFolder(self.val_path), batch_size=self.batch_size, 
-                                       num_workers=cpu_count(), drop_last=self.drop_last, shuffle=self.shuffle)
-        self.train_size   = len(self.train_loader)
-        self.val_size     = len(self.val_loader)
+                                       num_workers=os.cpu_count(), drop_last=self.drop_last, shuffle=self.shuffle)
+
+        self.num_train_batches = len(self.train_loader)
+        self.num_val_batches   = len(self.val_loader)
+        self.train_size        = self.num_train_batches*self.batch_size
+        self.val_size          = self.num_val_batches*self.batch_size
 
 
     '''
@@ -74,10 +81,9 @@ class Trainer(object):
             pred = output.data.max(1)[1]  # get the index of the max log-probability
             correct += pred.eq(target.data).cpu().sum()
 
-        total = self.val_size * self.batch_size if task == 'avg' else self.val_size
-        test_loss /= total
-        acc = 100. * correct / total
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct, total, acc))
+        test_loss /= self.val_size
+        acc = 100. * correct / self.val_size
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct, self.val_size, acc))
 
         return acc
 
@@ -98,40 +104,58 @@ class Trainer(object):
 
 
 class DistributedTrainer(Trainer):
-    def __init__(self, sess_id, share, network, data, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1):
+    def __init__(self, sess_id, cache, network, data, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
         super(DistributedTrainer, self).__init__(network, data, batch_size=batch_size, cuda=cuda, 
                                                  drop_last=drop_last, shuffle=shuffle, seed=seed)
 
         self.pid     = current_process().pid
         self.sess_id = sess_id
-        self.share   = share
+        self.cache   = cache
+        self.log     = log
+        self.dud2    = 'FOO123'
 
 
     '''
-    Share train set and validation set sizes, and final validation accuracy with parameter server
+    cache train set and validation set sizes, and final validation accuracy with parameter server
     '''
     def share(self):
-        self.share[self.sess_id]['train_size'] = self.epochs * self.total_train
-        self.share[self.sess_id]['val_size'] = self.val_size
-        self.share[self.sess_id]['acc'] = self.validations[-1]
+        self.log.debug('train.share() sess_id:{}'.format(self.sess_id))
+        sess = ujson.loads(self.cache.get(self.sess_id))
+        sess['ep_losses'] = self.ep_losses
+        sess['train_size'] = self.train_size
+        sess['val_size'] = self.val_size
+        sess['accuracy'] = self.validations[-1]
+        sess['train_batches'] = self.num_train_batches
+        sess['val_batches'] = self.num_val_batches
+        self.cache.set(self.sess_id, ujson.dumps(sess))
 
 
 '''
 Trainer for development only. Loads MNIST dataset on every worker.
 '''
 class DevTrainer(DistributedTrainer):
-    def __init__(self, log, sess_id, share, network, data, batch_size=1, cuda=False, drop_last=False, 
+    def __init__(self, log, sess_id, cache, network, data, batch_size=1, cuda=False, drop_last=False, 
                  shuffle=True, seed=-1):
-        super(DevTrainer, self).__init__(sess_id, share, network, data, batch_size, cuda, drop_last, shuffle, seed)
-        self.log = log
+        super(DevTrainer, self).__init__(sess_id, cache, network, data, batch_size, cuda, drop_last, shuffle, seed, log)
+        # self.log = log
         self.total_val   = 0
         self.total_train = 0
 
 
     def load_data(self):
-        kwargs = {'num_workers': cpu_count(), 'pin_memory': True} if self.cuda else {}
+        kwargs = {'num_workers': os.cpu_count(), 'pin_memory': True} if self.cuda else {}
         self.train_loader = DataLoader(datasets.MNIST('../data', train=True, download=True,
                                        transform=transforms.Compose([
                                        transforms.ToTensor(),
                                        transforms.Normalize((0.1307,), (0.3081,))])),
                                        batch_size=self.batch_size, shuffle=True, **kwargs)
+        self.val_loader = DataLoader(datasets.MNIST('../data', train=False, download=True,
+                                       transform=transforms.Compose([
+                                       transforms.ToTensor(),
+                                       transforms.Normalize((0.1307,), (0.3081,))])),
+                                       batch_size=self.batch_size, shuffle=True, **kwargs)
+        self.num_train_batches = len(self.train_loader)
+        self.num_val_batches   = len(self.val_loader)
+        self.train_size        = self.num_train_batches*self.batch_size
+        self.val_size          = self.num_val_batches*self.batch_size
+        self.log.debug('train_size:{}, val_size: {}'.format(self.train_size, self.val_size))
