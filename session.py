@@ -2,7 +2,7 @@
 	Justin Chen
 	session.py
 
-	Tool for examining session objects
+	Tool for examining session objects in the parameter server
 '''
 
 
@@ -29,10 +29,13 @@ def main():
 		pprint('keys: {}'.format([key for key in cache.scan_iter("*")]))
 
 	if args.sess != None:
+		result = ''
+
 		if not cache.exists(args.sess):
 			result = 'dne sess_id: {}'.format(args.sess)
 		else:
 			sess = ujson.loads(cache.get(args.sess))
+			result = sess
 
 			if args.ignore != None:
 				tmp = dict(sess)
@@ -45,7 +48,7 @@ def main():
 					result = 'key:{}, value: {}'.format(args.property, value)
 				if args.properties:
 					result = 'properties: {}'.format(list(sess.keys()))
-			pprint(result)
+		pprint(result)
 
 
 
