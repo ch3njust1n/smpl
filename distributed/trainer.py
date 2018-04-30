@@ -16,7 +16,7 @@ import os, logging, ujson
 
 
 class Trainer(object):
-    def __init__(self, network, data, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1):
+    def __init__(self, network, data, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
         super(Trainer, self).__init__()
         self.batch_size        = batch_size
         self.cuda              = cuda
@@ -25,6 +25,7 @@ class Trainer(object):
         self.ep_losses         = []
         self.epochs            = 1
         self.log_interval      = 1
+        self.logger            = log
         self.network           = network
         self.num_train_batches = 0
         self.num_val_batches   = 0
@@ -37,7 +38,6 @@ class Trainer(object):
         self.val_path          = os.path.join(data, 'val')
         self.val_size          = 0
         self.validations       = []
-        self.dud               = 'TESTING123'
 
         if self.seed != -1:
             manual_seed(self.seed)
@@ -83,7 +83,7 @@ class Trainer(object):
 
         test_loss /= self.val_size
         acc = 100. * correct / self.val_size
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct, self.val_size, acc))
+        self.logger.info('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct, self.val_size, acc))
 
         return acc
 
@@ -97,29 +97,27 @@ class Trainer(object):
     '''
     def log(self, pid, ep, loss, batch_idx, batch_size):
         if batch_idx % self.log_interval == 0:
-            print('{}\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
-                  pid, ep, batch_idx * batch_size, self.train_size,
-                  100. * batch_idx / self.train_size, loss.data[0]))
+            self.logger.info('pid: {}\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
+                          pid, ep, batch_idx * batch_size, self.train_size,
+                          100. * batch_idx / self.train_size, loss.data[0]))
 
 
 
 class DistributedTrainer(Trainer):
     def __init__(self, sess_id, cache, network, data, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
         super(DistributedTrainer, self).__init__(network, data, batch_size=batch_size, cuda=cuda, 
-                                                 drop_last=drop_last, shuffle=shuffle, seed=seed)
+                                                 drop_last=drop_last, shuffle=shuffle, seed=seed, log=log)
 
         self.pid     = current_process().pid
         self.sess_id = sess_id
         self.cache   = cache
-        self.log     = log
-        self.dud2    = 'FOO123'
 
 
     '''
     cache train set and validation set sizes, and final validation accuracy with parameter server
     '''
     def share(self):
-        self.log.debug('train.share() sess_id:{}'.format(self.sess_id))
+        self.logger.debug('train.share() sess_id:{}'.format(self.sess_id))
         sess = ujson.loads(self.cache.get(self.sess_id))
         sess['ep_losses'] = self.ep_losses
         sess['train_size'] = self.train_size
@@ -137,7 +135,6 @@ class DevTrainer(DistributedTrainer):
     def __init__(self, log, sess_id, cache, network, data, batch_size=1, cuda=False, drop_last=False, 
                  shuffle=True, seed=-1):
         super(DevTrainer, self).__init__(sess_id, cache, network, data, batch_size, cuda, drop_last, shuffle, seed, log)
-        # self.log = log
         self.total_val   = 0
         self.total_train = 0
 
@@ -158,4 +155,4 @@ class DevTrainer(DistributedTrainer):
         self.num_val_batches   = len(self.val_loader)
         self.train_size        = self.num_train_batches*self.batch_size
         self.val_size          = self.num_val_batches*self.batch_size
-        self.log.debug('train_size:{}, val_size: {}'.format(self.train_size, self.val_size))
+        self.logger.debug('train_size:{}, val_size: {}'.format(self.train_size, self.val_size))

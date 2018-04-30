@@ -138,6 +138,7 @@ class ParameterChannel(object):
                     raise Exception('Did not receive entire response. received:{} expected:{}'.format(received, expected))
                     return False, ''
                 content = ujson.loads(content)
+                # self.log.debug('addr: {}, api: {}'.format(addr, msg))
             else:
                 self.log.error('empty reply: {} for api:{}'.format(resp, msg))
                 content = ''

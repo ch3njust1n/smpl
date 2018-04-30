@@ -68,11 +68,10 @@ class Train(DevTrainer):
 
                 self.optimizer.step()
                 self.validations.append(self.validate())
-            self.log.info('pid:{}, ep:{}, loss:{}, batch_idx:{}, batch_size:{}'.format(self.pid, ep, loss, batch_idx, batch_size))
-            self.validations.append(2)
-            self.ep_losses.append(list(range(0,3)))
-            # self.ep_losses.append(ep_loss/self.num_train_batches)
+                break
+            self.log(self.pid, ep, loss, batch_idx, batch_size)
+            self.ep_losses.append(ep_loss/self.num_train_batches)
+            
             # Must call to share train size and 
             # validation size with parameter server
             self.share()
-            self.log.debug('sharing training statistics')
