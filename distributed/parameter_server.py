@@ -173,20 +173,24 @@ class ParameterServer(object):
     def __receive(self, conn, addr):
         try:
             resp = {}
-
+            packet = ''
             # Process that maintains a hyperedge
             while 1:
                 if int(self.cache.get('epochs')) == self.epochs:
                     self.log.info('ps.receive: training complete')
                     break
 
+                tmp = packet
                 packet = conn.recv(4096)
 
                 msg = packet.split('::')
 
                 if len(msg) < 2:
-                    self.log.error('gs.receive(): empty message')
-                    conn.sendall('invalid protocol')
+                    tmp = tmp.split('::')
+                    msg = 'empty message: {}, from {}, prev packet: {}'.format(packet, addr, tmp)
+                    self.log.error(msg)
+                    self.cache.set('empty{}'.format(time()), msg)
+                    conn.sendall(self.__format_msg('invalid'))
                     return
 
                 expected = int(msg[0])
@@ -196,8 +200,14 @@ class ParameterServer(object):
                     # TODO change this to array join, string concat will get expensive if packets are large
                     data += conn.recv(min(expected - len(data), 4096))
 
+                self.log.debug('len(data): {}, expected: {}'.format(len(data), expected))
+
                 logging.info('ps.receive() addr:{}'.format(addr))
-                resp = self.__route({"addr": addr, "length": expected, "content": ujson.loads(data)})
+                try:
+                    resp = self.__route({"addr": addr, "length": expected, "content": ujson.loads(data)})
+                except ValueError as e:
+                    self.log.debug('invalid json: {}'.format(e))
+                    raise Exception(e)
 
                 if resp == 'invalid':
                     self.log.error('invalid message: ', data, ' from ', str(addr))
@@ -430,6 +440,7 @@ class ParameterServer(object):
 
         # Async send gradients to all peers in hyperedge
         for send_to in sess['party']:
+            log.debug('sending to {}:{}'.format(send_to['host'], send_to['port']))
             Thread(target=self.pc.send, 
                    args=(send_to['host'], send_to['port'], 
                          {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
@@ -440,6 +451,9 @@ class ParameterServer(object):
         while 1:
             share_count = ujson.loads(self.cache.get(sess_id))['share_count']
             if int(share_count) == len(sess['party']): break
+            if int(share_count) > len(sess['party']):
+                log.debug('share_count: {} > sess[party]: {}'.format(int(share_count), len(sess['party'])))
+                raise Exception('dun fucked up')
             sleep(random())
         self.log.debug('done sync barrier')
 
@@ -467,7 +481,7 @@ class ParameterServer(object):
             logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             log = logging.getLogger()
 
-            log.debug('sender: {}, alias:{}, sess_id:{}'.format(sender, self.me['alias'], sess_id))
+            log.debug('sender: {}, me:{}, sess_id:{}'.format(sender, self.me['alias'], sess_id))
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
             sess['samples'] = samples + int(sess['samples'])
@@ -475,8 +489,10 @@ class ParameterServer(object):
             log.debug('log: {}, vars: share_count: {}, gradients: {}, samples: {}'.format(sess['log'], sess['share_count'], sess['gradients'], sess['samples']))
         except KeyError as e:
             self.log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
+            return 'invalid'
         except Exception as e:
             raise Exception('Unexpected error: {}'.format(e))
+            return 'invalid'
 
         return True
 
@@ -796,6 +812,7 @@ class ParameterServer(object):
             return model['parameters'], model['accuracy']
         except KeyError as e:
             self.log.exception('ps.get_parameters() sess_id:{}'.format(sess_id))
+            return 'invalid'
 
 
     '''

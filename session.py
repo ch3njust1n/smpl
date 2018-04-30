@@ -2,6 +2,8 @@
 	Justin Chen
 	session.py
 
+	4.30.2018
+
 	Tool for examining session objects in the parameter server
 '''
 

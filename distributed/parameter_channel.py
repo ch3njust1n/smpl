@@ -71,7 +71,7 @@ class ParameterChannel(object):
     Input:  msg (dict) API function call and parameters
     Output: (string) response
     '''
-    def format(self, msg):
+    def __format_msg(self, msg):
         msg = ujson.dumps(msg)
         return '{}::{}'.format(len(msg), msg)
 
@@ -110,30 +110,40 @@ class ParameterChannel(object):
                 return False, ''
 
             sock = self.connections[addr]
-            msg = self.format(msg) + '\n'
+            msg = self.__format_msg(msg)
             sock.sendall(msg)
             
             # Look for the response
             resp = sock.recv(4096).split('::')
-            # self.log.debug('resp:{}'.format(resp))
+            
+            # Check that a length is given
             if len(resp[0]) > 0:
                 expected = 0
+
                 try:
                     expected = int(resp[0])
                 except ValueError as e:
+                    self.log.error('unspecified message length: {}'.format(resp))
                     return False, ''
 
                 content = resp[1]
-                # self.log.debug('resp[0]: {}, resp[1]: {}, expected: {} content:{}'.format(resp[0], resp[1], expected, content))
                 received = len(content)
                 remaining = expected - received
 
+                if remaining < 0:
+                    raise Exception('received more than expected')
+
                 while len(content) < expected:
-                    content += sock.recv(min(expected - len(content), 4096))
-                    received = len(content)
+                    packet = sock.recv(expected - len(content))
+                    if not packet:
+                        return False, ''
+                    content += packet
 
                 # Received entire message
+                received = len(content)
                 ok = received == expected
+                self.log.debug('received ({}), expected ({})'.format(received, expected))
+                
                 if not ok:
                     raise Exception('Did not receive entire response. received:{} expected:{}'.format(received, expected))
                     return False, ''
