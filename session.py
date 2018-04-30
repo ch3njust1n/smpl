@@ -26,25 +26,26 @@ def main():
 
 	
 	if args.keys:
-		result = 'keys: {}'.format([key for key in cache.scan_iter("*")])
+		pprint('keys: {}'.format([key for key in cache.scan_iter("*")]))
 
-	if not cache.exists(args.sess):
-		result = 'dne sess_id: {}'.format(args.sess)
-	else:
-		sess = ujson.loads(cache.get(args.sess))
-
-		if args.ignore != None:
-			tmp = dict(sess)
-			for k in args.ignore:
-				del tmp[k]
-			result = tmp
+	if args.sess != None:
+		if not cache.exists(args.sess):
+			result = 'dne sess_id: {}'.format(args.sess)
 		else:
-			if args.property != None:
-				value = sess[args.property]
-				result = 'key:{}, value: {}'.format(args.property, value)
-			if args.properties:
-				result = 'properties: {}'.format(list(sess.keys()))
-	pprint(result)
+			sess = ujson.loads(cache.get(args.sess))
+
+			if args.ignore != None:
+				tmp = dict(sess)
+				for k in args.ignore:
+					del tmp[k]
+				result = tmp
+			else:
+				if args.property != None:
+					value = sess[args.property]
+					result = 'key:{}, value: {}'.format(args.property, value)
+				if args.properties:
+					result = 'properties: {}'.format(list(sess.keys()))
+			pprint(result)
 
 
 
