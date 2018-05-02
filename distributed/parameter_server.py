@@ -10,6 +10,7 @@ sys.path.insert(0, 'data')
 
 from parameter_channel import ParameterChannel
 from multiprocessing import Process, Lock, Manager, cpu_count, Value
+from multiprocessing.managers import BaseManager
 from threading import Thread
 from random import random, getrandbits, shuffle, randint
 from time import sleep, time
@@ -113,8 +114,12 @@ class ParameterServer(object):
         self.cache.set('epochs', 0)
 
         # Setup TCP connections to all peers
-        #self.pc = Manager().Value('pc', ParameterChannel(self.peers, logger=self.log))
+        self.tcp_conn = {}#Manager().dict()
         self.pc = ParameterChannel(self.peers, logger=self.log)
+        # BaseManager.register('ParameterChannel', ParameterChannel)
+        # manager = BaseManager()
+        # manager.start()
+        # self.pc = manager.ParameterChannel(self.peers, logger=self.log)
 
         # Establish ports for receiving API calls
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -736,6 +741,7 @@ class ParameterServer(object):
         peers = []
         responses = []
         log.debug('calling ps.establish_session() sess_id: {}'.format(sess['id']))
+        log.debug('self.pc.connections: {}'.format(self.pc.connections))
 
         # Note: Parallelize this!!!
         for send_to in unique:
