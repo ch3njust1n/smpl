@@ -34,12 +34,10 @@ class ParameterChannel(object):
 
         address = '{}:{}'.format(peer['host'], peer['port'])
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.log.debug('addr: {}, sock: {}, connections: {}'.format(address, sock, self.connections))
 
         while address not in self.connections:
 
             try:
-                self.log.debug('host:{}, port:{}'.format(peer['host'], peer['port']))
                 sock.connect((peer['host'], peer['port']))
                 # self.connections[address] = sock
                 tmp = self.connections
@@ -67,8 +65,6 @@ class ParameterChannel(object):
 
         for t in queue:
             t.join()
-
-        self.log.debug('connections: {}'.format(self.connections))
 
 
     '''
@@ -118,21 +114,17 @@ class ParameterChannel(object):
             resp = ''
             addr = '{}:{}'.format(host, port)
             
-            self.log.debug('wherethefuckami1')
             if addr not in self.connections:
                 self.log.error('addr: {} not in connections: {}'.format(addr, self.connections))
                 return False, ''
 
-            self.log.debug('wherethefuckami2')
             sock = self.connections[addr]
             msg = self.__format_msg(msg)
             sock.sendall(msg)
             
-            self.log.debug('wherethefuckami3 {}'.format(host))
             # Look for the response
             resp = sock.recv(4096).split('::')
 
-            self.log.debug('wherethefuckami4')
             if 'invalid' in resp:
                 self.log.debug('addr: {}, msg: {}'.format(addr, msg))
             
@@ -140,27 +132,19 @@ class ParameterChannel(object):
             if len(resp[0]) > 0:
                 expected = 0
 
-                self.log.debug('wherethefuckami5')
                 try:
                     expected = int(resp[0])
                 except ValueError as e:
                     self.log.error('unspecified message length: {}'.format(resp))
                     return False, ''
 
-                self.log.debug('wherethefuckami6')
-
                 content = resp[1]
                 received = len(content)
                 remaining = expected - received
 
-                self.log.debug('wherethefuckami7')
-
                 if remaining < 0:
-                    self.log.debug('wherethefuckami8')
-                    self.log.error('received more than expected')
                     raise Exception('received more than expected')
 
-                self.log.debug('wherethefuckami9')
                 while len(content) < expected:
                     packet = sock.recv(expected - len(content))
                     if not packet:
@@ -168,30 +152,22 @@ class ParameterChannel(object):
                         return False, ''
                     content += packet
 
-                self.log.debug('wherethefuckami10')
                 # Received entire message
                 received = len(content)
                 ok = received == expected
-                self.log.debug('received ({}), expected ({})'.format(received, expected))
                 
-                self.log.debug('wherethefuckami11')
                 if not ok:
                     msg = 'Did not receive entire response. received:{} expected:{}'.format(received, expected)
-                    self.log.error(msg)
                     raise Exception(msg)
                     return False, ''
-                self.log.debug('wherethefuckami12')
+
                 content = ujson.loads(content)
-                self.log.debug('wherethefuckami13')
             else:
-                self.log.debug('wherethefuckami14')
                 self.log.error('empty reply: {} for api:{}'.format(resp, msg))
                 content = ''
         except Exception as e:
-            self.log.debug('wherethefuckami15')
             self.log.exception(str(e))
 
-        self.log.debug('wherethefuckami16')
         return ok, content
 
 

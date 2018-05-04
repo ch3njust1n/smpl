@@ -205,13 +205,10 @@ class ParameterServer(object):
                     # TODO change this to array join, string concat will get expensive if packets are large
                     data += conn.recv(min(expected - len(data), 4096))
 
-                self.log.debug('len(data): {}, expected: {}'.format(len(data), expected))
-
                 logging.info('ps.receive() addr:{}'.format(addr))
                 try:
                     resp = self.__route({"addr": addr, "length": expected, "content": ujson.loads(data)})
                 except ValueError as e:
-                    self.log.debug('invalid json: {}'.format(e))
                     raise Exception(e)
 
                 if resp == 'invalid':
@@ -314,23 +311,16 @@ class ParameterServer(object):
             sess_id = self.__init_session(log=log, log_path=log_path)
             sleep(random())
 
-        log.debug('initiating sess_id: {}'.format(sess_id))
         
         # Save log file path
         sess = ujson.loads(self.cache.get(sess_id))
         sess["log"] = log_path
-        # log.debug('justadded log?: {}'.format(sess))
         self.cache.set(sess_id, ujson.dumps(sess))
-        # log.debug('justadded sess?: {}'.format(ujson.loads(self.cache.get(sess_id))))
 
         sess = self.__train(sess_id, log)
 
-        log.debug('checkingRank')
         # compare recently trained hyperedge model with current best
-        # if self.rank(sess_id, log=log) > sess['rank']:
         ok = self.update_model('best', sess['parameters'], sess['accuracy'], log)
-
-        log.debug('update id: {} status: {}'.format(sess_id, ok))
 
         # clean up parameter cache and gradient queue
         self.cache.delete(sess_id)
@@ -359,14 +349,12 @@ class ParameterServer(object):
         if log == None:
             log, log_path = utils.log(self.log_dir, 'train-{}'.format(sess_id))
 
-        log.debug('ps.__train() sess_id:{}'.format(sess_id))
 
         # Setup variables for sharing gradients
         sess = ujson.loads(self.cache.get(sess_id))
 
         # Each session should create its own model
         nn = net.DevNet(seed=self.seed, log=log)
-        # log.debug('wtfisthis: {}'.format(sess['parameters']))
         nn.update_parameters(sess['parameters'])
 
         if self.parallel == 'hogwild':
@@ -376,20 +364,15 @@ class ParameterServer(object):
 
         # Update session model rank
         sess = ujson.loads(self.cache.get(sess_id))
-        log.debug('qaz ep_losses:{}, trainsize:{}'.format(sess['ep_losses'], sess['train_size']))
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], sparsify=True)
-        # self.log.debug('multistepGrad:{}'.format(multistep))
         self.__allreduce(sess_id, sess, multistep, sess['train_size'], log)
-
-        log.debug('allreduced')
 
         # Final validation
         # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
         sess['samples'] = 1 # remove this later
-        # log.debug('grads:{}'.format(sess['gradients']))
         nn.add_batched_coordinates(sess['gradients'], sess['samples'])
 
         # Validate model accuracy
@@ -414,9 +397,7 @@ class ParameterServer(object):
         # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
         self.seed=18
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
-        log.debug('me:{} pid:{} conf:{}'.format(self.me['id'], os.getpid(), str(conf)))
         processes = []
-        log.debug('init worker train')
         t = Train(conf)
         t.train()
         # for w in range(self.workers):
@@ -441,7 +422,6 @@ class ParameterServer(object):
                                peer's gradients
     '''
     def __allreduce(self, sess_id, sess, gradients, sample_size, log=None):
-        log.debug('calling ps.share_grad() sess_id: {}'.format(sess_id))
 
         # Async send gradients to all peers in hyperedge
         for send_to in sess['party']:
@@ -486,12 +466,10 @@ class ParameterServer(object):
             logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             log = logging.getLogger()
 
-            log.debug('sender: {}, me:{}, sess_id:{}'.format(sender, self.me['alias'], sess_id))
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
             sess['samples'] = samples + int(sess['samples'])
             self.cache.set(sess_id, ujson.dumps(sess))
-            log.debug('log: {}, vars: share_count: {}, gradients: {}, samples: {}'.format(sess['log'], sess['share_count'], sess['gradients'], sess['samples']))
         except KeyError as e:
             self.log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
             return 'invalid'
@@ -530,7 +508,6 @@ class ParameterServer(object):
             sess = {}
 
             if best['host'] == self.me['host']:
-                log.debug('im best')
                 sess = ujson.loads(self.cache.get('best'))
                 sess["party"] = peers
                 parameters = sess["parameters"]
@@ -538,17 +515,15 @@ class ParameterServer(object):
                 # Always only wanna synchronize with the local parameters of peer with the best parameters
                 # not their globally best parameters, just the parameters they're using for this hyperedge
                 resp = []
-                log.debug('getting params from: {}'.format(best['host']))
+
                 while len(resp) == 0:
                     _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
                     sleep(random())
-                log.debug('resp:{}, from: {}'.format(resp, best['host']))
                 ok = True
                 parameters = resp[0]
                 sess = {"parameters": parameters, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
             
             sess.update(ujson.loads(self.cache.get(sess_id)))
-            # log.debug('updatedShit: {}, sess_id: {}'.format(sess, sess_id))
             ok = self.cache.set(sess_id, ujson.dumps(sess))
         else:
             # Else parameters were explicitely given, so update with those
@@ -556,7 +531,6 @@ class ParameterServer(object):
 
         # Start locally training
         nn = net.DevNet(seed=self.seed, log=log)
-        # log.debug('wtfisthis2: {}'.format(parameters))
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
 
@@ -589,7 +563,7 @@ class ParameterServer(object):
         # sort by accuracy in descending order and cache as current session
         # implement parameter synchronization strategies here
         peers = sorted(peers, key=lambda x: x['accuracy'], reverse=True)
-        best = peers[0]
+        best = peers[0] if random() <= self.epsilon else peers[randint(0, len(peers)-1)]
 
         # request parameters from member with highest accuracy
         model = []
@@ -599,12 +573,10 @@ class ParameterServer(object):
             ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
 
             args = [sess_id, best, peers[:], self.me]
-            # log.debug('wtfisthis5: {}, best[host]: {}'.format(model[0], best['host']))
         else:
             model = ujson.loads(self.cache.get('best'))
             # send sess_id, parameters, and model accuracy to all peers
             args = [sess_id, best, peers[:], self.me, model[0], model[1]]
-            # log.debug('wtfisthis4: {}'.format(model[0]))
 
         log.debug('calling ps.synchronize_parameters sess_id: {}'.format(sess_id))
 
@@ -616,10 +588,8 @@ class ParameterServer(object):
                       {"api": "synchronize_parameters", "args": args},)).start()
 
         log.debug('party:{}'.format(peers))
-        # log.debug('ps.__init_session model:{}'.format(model))
 
         # save parameters so can calculate difference (gradient) after training
-        # log.debug('wtfisthis3: {}'.format(model[0]))
         self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
                                             "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
                                             "log": log_path, "share_count": 0, "samples": 0, "gradients": [],
@@ -642,7 +612,6 @@ class ParameterServer(object):
     def rank(self, sess_id, log=None):
         pass
         # model = ujson.loads(self.cache.get(sess_id))
-        # log.debug('valsize: {}, trainsize: {}'.format(model['val_size'], model['train_size']))
         # model['rank'] = model['accuracy']*(self.val_rank/model['val_size'] + self.train_rank/model['train_size'])
         
 
@@ -680,8 +649,6 @@ class ParameterServer(object):
     '''
     def active_sessions(self, log=None):
         active_ids = [k for k in self.cache.scan_iter('sess*')]
-
-        log.debug('ps.active_sessions')
 
         if len(active_ids) == 0:
             return []
@@ -740,8 +707,6 @@ class ParameterServer(object):
         unique = self.get_unique_clique(self.peers, log=log)
         peers = []
         responses = []
-        log.debug('calling ps.establish_session() sess_id: {}'.format(sess['id']))
-        log.debug('self.pc.connections: {}'.format(self.pc.connections))
 
         # Note: Parallelize this!!!
         for send_to in unique:
@@ -774,7 +739,7 @@ class ParameterServer(object):
             sleep(0.1)
 
         if int(self.cache.get('edges')) == self.max:
-            log.debug('ps.__establish_session maxed hyperedges')
+            log.debug('maxed hyperedges')
             return {}
         else:
             # Increment hyperedge count
@@ -786,7 +751,6 @@ class ParameterServer(object):
 
             # CHECK FOR UNIQUE HYPEREDGES AGAIN AND IF A SESSION IN THE CACHE ALREADY HAS ALL THESE
             # PEERS EXACTLY, THEN ABORT THIS CURRENT SESSION
-            log.debug('saving session')
             self.cache.set(sess_id, ujson.dumps({"id": sess_id, "peers": [], "log": log_path,
                                                  "share_count": 0, "gradients": [], "samples": 0}))
         self.edge_lock.release()

@@ -81,34 +81,33 @@ class Network(nn.Module):
            gradients (bool, optional)
     '''
     def update_parameters(self, params, gradients=False):
-        # self.log.debug('update_parameters params:{}'.format(params))
         if type(params) != list:
             raise Exception('InvalidTypeException: Recevied {},but expected a list of lists or a list of torch.FloatTensors'.format(type(params)))
 
         if len(params) > 0:
             if type(params[0]) == nn.parameter.Parameter:
-                self.log.debug('UP0')
+                self.log.debug('updating type:parameters')
                 for update, model in zip(params, self.parameters()):
                     if gradients:
                         model.grad.data = update.data
                     else:
                         model.data = update.data
             elif type(params[0]) == FloatTensor:
-                self.log.debug('UP1')
+                self.log.debug('updating type:FloatTensor')
                 for update, model in zip(params, self.parameters()):
                     if gradients:
                         model.grad.data = update
                     else:
                         model.data = update
             elif type(params[0]) == list:
-                self.log.debug('UP2')
+                self.log.debug('updating type:list')
                 for update, model in zip(params, self.parameters()):
                     if gradients:
                         model.data = pt.list_to_tensor(update)
                     else:
                         model.data = pt.list_to_tensor(update)
             else:
-                self.log.debug('UP Err')
+                self.log.debug('updating error')
                 raise Exception('error: parameter type not supported <'+str(type(params))+'>')
 
 
@@ -142,17 +141,17 @@ class Network(nn.Module):
         gradients = []
 
         if isinstance(network, Network):
-            self.log.debug('MSG 0')
+            self.log.debug('multistep type:Network')
             gradients = [b-a for (b, a) in zip(sself.get_parameters(reference=True), network.parameters())]
         elif isinstance(network, list) and len(network) > 0:
             if isinstance(network[0], FloatTensor):
-                self.log.debug('MSG 1')
+                self.log.debug('multistep type:FloatTensor')
                 gradients = [b-a for (b, a) in zip(self.get_parameters(reference=True), network)]
             elif isinstance(network[0], list):
-                self.log.debug('MSG 2')
+                self.log.debug('multistep type:list')
                 gradients = [b-FloatTensor(a) for (b, a) in zip(self.get_parameters(reference=True), network)]
         else:
-            self.log.debug('MSG 3')
+            self.log.debug('multistep error')
             raise Exception('Error: {} type not supported'.format(type(network)))
 
         return pt.largest_k(gradients) if sparsify else [g.data.tolist() for g in gradients] if tolist else gradients
@@ -225,7 +224,7 @@ class Network(nn.Module):
            avg (int, optional)
     '''
     def add_batched_coordinates(self, coords, avg=1):
-        self.log.debug('adding coords')
+        self.log.debug('adding coordinates')
         num_procs = cpu_count()
         self.share_memory()
         processes = []
@@ -235,9 +234,7 @@ class Network(nn.Module):
         sorted_coords = sorted(coords, key=lambda x: x[0][0])
 
         for l in sorted_coords:
-            # self.log.debug('what is l? {}'.format(l))
             layer = l[0][0]
-            # self.log.debug('layer:{}'.format(layer))
             if layer[0] in params_coords:
                 params_coords[layer[0]].append(l)
             else:
@@ -267,7 +264,7 @@ class DevNet(Network):
 
     def forward(self, x):
         x = x.view(-1, 784)
-        return F.log_softmax(self.fc1(x))
+        return F.log_softmax(self.fc1(x), dim=0)
 
 
 class DevNeuron(Network):
