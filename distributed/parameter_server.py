@@ -314,20 +314,6 @@ class ParameterServer(object):
 
         sess = self.__train(sess_id, log)
 
-        # # compare recently trained hyperedge model with current best
-        # ok = self.update_model('best', session=sess_id, log=log)
-
-        # # clean up parameter cache and gradient queue
-        # if not self.dev:
-        #     self.cache.delete(sess_id)
-
-        # # increment total successful training epoches and hyperedges
-        # self.count_lock.acquire()
-        # self.cache.set('epochs', int(self.cache.get('epochs'))+1)
-        # self.cache.set('edges', int(self.cache.get('edges'))-1)
-        # self.count_lock.release()
-        # log.info('hyperedge training complete')
-
 
     '''
     Internal API
@@ -365,7 +351,6 @@ class ParameterServer(object):
         # Final validation
         # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
-        log.debug('after\ntrain_size: {}, validation: {}'.format(sess['train_size'], sess['val_size']))
         sess['train_size'] += sess['share_train_sizes']
         nn.add_batched_coordinates(sess['gradients'], sess['train_size'])
 
@@ -373,7 +358,6 @@ class ParameterServer(object):
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
         self.cache.set(sess_id, ujson.dumps(sess))
-        log.debug('after grad avg: {} ({}%)'.format(sess_id, sess["accuracy"]))
 
         self.cleanup(sess_id, sess, log)
 
@@ -450,22 +434,22 @@ class ParameterServer(object):
 
         # Async send gradients to all peers in hyperedge
         for send_to in sess['party']:
-            log.debug('sending to {}:{} train_size: {}, sess_id: {}'.format(send_to['host'], send_to['port'], sample_size, sess_id))
+            log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
             Thread(target=self.pc.send, 
                    args=(send_to['host'], send_to['port'], 
                          {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
 
-        log.debug('before\ntrain_size: {}, validation: {}'.format(sess['train_size'], sess['val_size']))
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
         while 1:
             share_count = ujson.loads(self.cache.get(sess_id))['share_count']
             if int(share_count) == len(sess['party']): break
             if int(share_count) > len(sess['party']):
-                log.debug('share_count: {} > sess[party]: {}'.format(int(share_count), len(sess['party'])))
+                log.error('share_count: {} > sess[party]: {}'.format(int(share_count), len(sess['party'])))
                 raise Exception('share count cannot be greater than total party size')
             sleep(random())
-        self.log.debug('done sync barrier\ttrain_size: {}'.format(ujson.loads(self.cache.get(sess_id))['train_size']))
+
+        self.log.info('done sync barrier')
 
 
     '''
@@ -493,7 +477,6 @@ class ParameterServer(object):
 
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
-            log.debug('sess_id: {} samples:{} sess[train_size]:{}'.format(sess_id, samples, int(sess['train_size'])))
             sess['share_train_sizes'] = samples + int(sess['share_train_sizes'])
             self.cache.set(sess_id, ujson.dumps(sess))
         except KeyError as e:
@@ -581,7 +564,7 @@ class ParameterServer(object):
 
         # if can't connect with other peers, respond indicating failure
         if len(peers) == 0:
-            log.debug('ps.__init_session: removing dead session')
+            log.info('removing dead session')
             # remove dead session from cache
             self.cache.delete(sess_id)
             return ''
@@ -605,16 +588,12 @@ class ParameterServer(object):
             # send sess_id, parameters, and model accuracy to all peers
             args = [sess_id, best, peers[:], self.me, model[0], model[1]]
 
-        log.debug('calling ps.synchronize_parameters sess_id: {}'.format(sess_id))
-
         # Synchronize parameters of model with best validation accuracy
         for i, send_to in enumerate(peers):
             args[2].pop(i)
             Thread(target=self.pc.send, 
                 args=(send_to['host'], send_to['port'],
                       {"api": "synchronize_parameters", "args": args},)).start()
-
-        log.debug('party:{}'.format(peers))
 
         # save parameters so can calculate difference (gradient) after training
         self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
@@ -654,7 +633,7 @@ class ParameterServer(object):
     Output: ok         (bool)   Flag indicating if model was updated
     '''
     def update_model(self, sess_id, session='', parameters=[], accuracy=-1, log=None):
-        log.debug('updating model id: {}'.format(sess_id))
+        log.info('updating model id: {}'.format(sess_id))
         sess = ujson.loads(self.cache.get(sess_id))
 
         if len(session) > 0:
@@ -774,7 +753,7 @@ class ParameterServer(object):
             sleep(0.1)
 
         if int(self.cache.get('edges')) == self.max:
-            log.debug('maxed hyperedges')
+            log.info('maxed hyperedges')
             return {}
         else:
             # Increment hyperedge count
