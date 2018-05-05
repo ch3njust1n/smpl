@@ -31,6 +31,9 @@ class ParameterServer(object):
         self.port           = args.port
         self.workers        = (cpu_count()-args.clique)/(args.clique)
 
+        self.async_global   = args.async_global
+        self.async_mid      = args.async_mid
+        self.async_local    = args.async_local
         self.batch_size     = args.batch_size
         self.clique         = args.clique-1
         self.cuda           = args.cuda
@@ -107,7 +110,7 @@ class ParameterServer(object):
         # Stash this server's info
         # self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, 
         #                                    "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
-        self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
+        self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "share_train_sizes": 0, "log": self.log_path,
                                             "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()]}))
         self.cache.set('server', ujson.dumps({"clique": self.clique, "host": self.host, "port": self.port}))
         self.cache.set('edges', 0)
@@ -185,14 +188,11 @@ class ParameterServer(object):
                     self.log.info('ps.receive: training complete')
                     break
 
-                tmp = packet
                 packet = conn.recv(4096)
-
                 msg = packet.split('::')
 
                 if len(msg) < 2:
-                    tmp = tmp.split('::')
-                    msg = 'empty message: {}, from {}, prev packet: {}'.format(packet, addr, tmp)
+                    msg = 'empty message: {}, from {}'.format(packet, addr)
                     self.log.error(msg)
                     self.cache.set('empty{}'.format(time()), msg)
                     conn.sendall(self.__format_msg('invalid'))
@@ -212,7 +212,7 @@ class ParameterServer(object):
                     raise Exception(e)
 
                 if resp == 'invalid':
-                    self.log.error('invalid message: ', data, ' from ', str(addr))
+                    self.log.error('invalid message: {} from: {}'.format(data, str(addr)))
 
                 conn.sendall(self.__format_msg(resp))
 
@@ -323,7 +323,8 @@ class ParameterServer(object):
         ok = self.update_model('best', sess['parameters'], sess['accuracy'], log)
 
         # clean up parameter cache and gradient queue
-        self.cache.delete(sess_id)
+        if not self.dev:
+            self.cache.delete(sess_id)
 
         # increment total successful training epoches and hyperedges
         self.count_lock.acquire()
@@ -357,9 +358,6 @@ class ParameterServer(object):
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(sess['parameters'])
 
-        if self.parallel == 'hogwild':
-            nn.share_memory()
-
         self.__local_train(sess_id, nn, log)
 
         # Update session model rank
@@ -372,14 +370,15 @@ class ParameterServer(object):
         # Final validation
         # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
-        sess['samples'] = 1 # remove this later
-        nn.add_batched_coordinates(sess['gradients'], sess['samples'])
+        log.debug('after\ntrain_size: {}, validation: {}'.format(sess['train_size'], sess['val_size']))
+        sess['train_size'] += sess['share_train_sizes']
+        nn.add_batched_coordinates(sess['gradients'], sess['train_size'])
 
         # Validate model accuracy
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
-        # sess["accuracy"] = Train(conf).validate() # Commented out for now. Refer to issue #44
+        sess["accuracy"] = Train(conf).validate()
         self.cache.set(sess_id, ujson.dumps(sess))
-        self.log.debug('trainComplete: {}'.format(sess_id))
+        self.log.debug('after grad avg: {} ({}%)'.format(sess_id, sess["accuracy"]))
 
         return sess
 
@@ -392,22 +391,33 @@ class ParameterServer(object):
             log     (Logger)
     Output: share   (dict)      Dictionary containing accuracy, validation size, and training size
     '''
-    def __local_train(self, sess_id, nn, log):
+    def __local_train(self, sess_id, nn, log=None):
         # DistributedTrainer constructor parameters
         # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
         self.seed=18
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         processes = []
-        t = Train(conf)
-        t.train()
-        # for w in range(self.workers):
-        #     p = Process(target=Train(conf).train)
-        #     p.start()
-        #     processes.append(p)
 
-        # # Local sync barrier
-        # for p in processes:
-        #     p.join()
+        start_time = time()
+
+        if self.async_local:
+            log.info('hogwild!')
+            nn.share_memory()
+
+            for w in range(self.workers):
+                p = Process(target=Train(conf).train)
+                p.start()
+                processes.append(p)
+
+            # Local sync barrier
+            for p in processes:
+                p.join()
+        else:
+            log.info('vanilla')
+            t = Train(conf)
+            t.train()
+
+        log.info('local ({} s)'.format(time()-start_time))
 
 
     '''
@@ -425,12 +435,12 @@ class ParameterServer(object):
 
         # Async send gradients to all peers in hyperedge
         for send_to in sess['party']:
-            log.debug('sending to {}:{}'.format(send_to['host'], send_to['port']))
+            log.debug('sending to {}:{} train_size: {}, sess_id: {}'.format(send_to['host'], send_to['port'], sample_size, sess_id))
             Thread(target=self.pc.send, 
                    args=(send_to['host'], send_to['port'], 
                          {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
 
-        log.debug('finished async share_grad')
+        log.debug('before\ntrain_size: {}, validation: {}'.format(sess['train_size'], sess['val_size']))
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
         while 1:
@@ -438,9 +448,9 @@ class ParameterServer(object):
             if int(share_count) == len(sess['party']): break
             if int(share_count) > len(sess['party']):
                 log.debug('share_count: {} > sess[party]: {}'.format(int(share_count), len(sess['party'])))
-                raise Exception('dun fucked up')
+                raise Exception('share count cannot be greater than total party size')
             sleep(random())
-        self.log.debug('done sync barrier')
+        self.log.debug('done sync barrier\ttrain_size: {}'.format(ujson.loads(self.cache.get(sess_id))['train_size']))
 
 
     '''
@@ -468,7 +478,8 @@ class ParameterServer(object):
 
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
-            sess['samples'] = samples + int(sess['samples'])
+            log.debug('samples:{} sess[train_size]:{}'.format(samples, int(sess['train_size'])))
+            sess['share_train_sizes'] = samples + int(sess['share_train_sizes'])
             self.cache.set(sess_id, ujson.dumps(sess))
         except KeyError as e:
             self.log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
@@ -592,8 +603,8 @@ class ParameterServer(object):
         # save parameters so can calculate difference (gradient) after training
         self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
                                             "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
-                                            "log": log_path, "share_count": 0, "samples": 0, "gradients": [],
-                                            "train_batches": 0, "val_batches": 0}))
+                                            "log": log_path, "share_count": 0, "gradients": [], 
+                                            "share_train_sizes": 0, "train_batches": 0, "val_batches": 0}))
 
         if not self.cache.exists(sess_id):
             log.error('Error: key insertion failure {}'.format(sess_id))
@@ -752,7 +763,7 @@ class ParameterServer(object):
             # CHECK FOR UNIQUE HYPEREDGES AGAIN AND IF A SESSION IN THE CACHE ALREADY HAS ALL THESE
             # PEERS EXACTLY, THEN ABORT THIS CURRENT SESSION
             self.cache.set(sess_id, ujson.dumps({"id": sess_id, "peers": [], "log": log_path,
-                                                 "share_count": 0, "gradients": [], "samples": 0}))
+                                                 "share_count": 0, "gradients": []}))
         self.edge_lock.release()
         
         return me

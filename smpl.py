@@ -21,12 +21,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Default host address')
     parser.add_argument('--port', type=int, default=9888, help='Port number for GradientServer')
+    parser.add_argument('--async_global', type=bool, default=True, help='Set for globally asynchronous training (default: True)')
+    parser.add_argument('--async_mid', type=bool, default=True, help='Set for asynchronous training within hyperedges (default: True)')
+    parser.add_argument('--async_local', type=bool, default=False, help='Set for asynchronous training on each peer (default: True)')
     parser.add_argument('--batch_size', type=int, default=16, help='Data batch size (default: 16)')
     parser.add_argument('--cuda', type=str2bool, default=False, help='Enables CUDA training (default: False)')
     parser.add_argument('--clique', '-c', type=clique_size, default=2, help='Clique size (default: 2)')
     parser.add_argument('--data', '-d', type=str, default='mnist', help='Data directory')
-    parser.add_argument('--dev', '-v', type=str2bool, default=True, help='Development mode will set random \
-                        seed (default: True)')
+    parser.add_argument('--dev', '-v', type=str2bool, default=True, help='Development mode will fix random \
+                        seed and keep session objects for analysis (default: True)')
     parser.add_argument('--drop_last', type=bool, default=False, help='True if last batch should be dropped if \
                         the dataset is not divisible by the batch size (default: False)')
     parser.add_argument('--ds_host', type=str, default='128.31.26.25', help='Data server host address')

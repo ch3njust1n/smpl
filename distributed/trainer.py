@@ -155,4 +155,3 @@ class DevTrainer(DistributedTrainer):
         self.num_val_batches   = len(self.val_loader)
         self.train_size        = self.num_train_batches*self.batch_size
         self.val_size          = self.num_val_batches*self.batch_size
-        self.logger.debug('train_size:{}, val_size: {}'.format(self.train_size, self.val_size))

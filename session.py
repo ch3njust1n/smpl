@@ -19,13 +19,14 @@ def main():
 	parser.add_argument('--db', type=int, default=0, help='Redis db')
 	parser.add_argument('--ignore', '-i', type=str, nargs='+', help='Ignores a particular key/value in the session object')
 	parser.add_argument('--keys', '-k', action='store_true', help='Get all Redis keys')
+	parser.add_argument('--minimal', '-m', action='store_true', help='Ignore parameters and gradients')
 	parser.add_argument('--sess', '-s', type=str, help='Session objection id')
 	parser.add_argument('--property', '-p', type=str, help='Session object property')
 	parser.add_argument('--properties', '-ps', action='store_true', help='Get all properties of object')
 	args = parser.parse_args()
 
 	cache = redis.StrictRedis(host=args.host, port=args.port, db=args.db)
-
+	ignore = ['parameters', 'gradients']
 	
 	if args.keys:
 		pprint('keys: {}'.format([key for key in cache.scan_iter("*")]))
@@ -42,6 +43,11 @@ def main():
 			if args.ignore != None:
 				tmp = dict(sess)
 				for k in args.ignore:
+					del tmp[k]
+				result = tmp
+			elif args.minimal:
+				tmp = dict(sess)
+				for k in ignore:
 					del tmp[k]
 				result = tmp
 			else:
