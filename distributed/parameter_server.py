@@ -191,7 +191,7 @@ class ParameterServer(object):
                     self.log.error(msg)
                     self.cache.set('empty{}'.format(time()), msg)
                     conn.sendall(self.__format_msg('invalid'))
-                    return
+                    # return
 
                 expected = int(msg[0])
                 data = msg[1]
@@ -314,19 +314,19 @@ class ParameterServer(object):
 
         sess = self.__train(sess_id, log)
 
-        # compare recently trained hyperedge model with current best
-        ok = self.update_model('best', session=sess_id, log=log)
+        # # compare recently trained hyperedge model with current best
+        # ok = self.update_model('best', session=sess_id, log=log)
 
-        # clean up parameter cache and gradient queue
-        if not self.dev:
-            self.cache.delete(sess_id)
+        # # clean up parameter cache and gradient queue
+        # if not self.dev:
+        #     self.cache.delete(sess_id)
 
-        # increment total successful training epoches and hyperedges
-        self.count_lock.acquire()
-        self.cache.set('epochs', int(self.cache.get('epochs'))+1)
-        self.cache.set('edges', int(self.cache.get('edges'))-1)
-        self.count_lock.release()
-        log.info('hyperedge training complete')
+        # # increment total successful training epoches and hyperedges
+        # self.count_lock.acquire()
+        # self.cache.set('epochs', int(self.cache.get('epochs'))+1)
+        # self.cache.set('edges', int(self.cache.get('edges'))-1)
+        # self.count_lock.release()
+        # log.info('hyperedge training complete')
 
 
     '''
@@ -373,9 +373,29 @@ class ParameterServer(object):
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
         self.cache.set(sess_id, ujson.dumps(sess))
-        self.log.debug('after grad avg: {} ({}%)'.format(sess_id, sess["accuracy"]))
+        log.debug('after grad avg: {} ({}%)'.format(sess_id, sess["accuracy"]))
+
+        self.cleanup(sess_id, sess, log)
 
         return sess
+
+
+    '''
+    '''
+    def cleanup(self, sess_id, sess, log=None):
+        # compare recently trained hyperedge model with current best
+        ok = self.update_model('best', session=sess_id, log=log)
+
+        # clean up parameter cache and gradient queue
+        if not self.dev:
+            self.cache.delete(sess_id)
+
+        # increment total successful training epoches and hyperedges
+        self.count_lock.acquire()
+        self.cache.set('epochs', int(self.cache.get('epochs'))+1)
+        self.cache.set('edges', int(self.cache.get('edges'))-1)
+        self.count_lock.release()
+        log.info('hyperedge training complete')
 
 
     '''

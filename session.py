@@ -8,7 +8,7 @@
 '''
 
 
-import redis, ujson, argparse
+import redis, ujson, argparse, sys
 from pprint import pprint
 
 
@@ -28,6 +28,7 @@ def main():
 	parser.add_argument('--keys', '-k', action='store_true', help='Get all Redis keys')
 	parser.add_argument('--minimal', '-m', action='store_true', help='Ignore parameters and gradients')
 	parser.add_argument('--sess', '-s', type=str, help='Session objection id')
+	parser.add_argument('--size', '-z', action='store_true', help='Get size of cache object')
 	parser.add_argument('--property', '-p', type=str, help='Session object property')
 	parser.add_argument('--properties', '-ps', action='store_true', help='Get all properties of object')
 	parser.add_argument('--variable', '-v', type=str, help='Retrieve state variable. If using this, do not set --sess')
@@ -39,6 +40,9 @@ def main():
 		pprint('keys: {}'.format([key for key in cache.scan_iter("*")]))
 
 	sess = get_object(args.sess, cache) if args.sess != None else get_object(args.variable, cache)
+
+	if args.size:
+		print('{} (bytes)'.format(sys.getsizeof(sess)))
 
 	if args.ignore != None:
 		for k in args.ignore:
