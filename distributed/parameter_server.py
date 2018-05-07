@@ -184,32 +184,41 @@ class ParameterServer(object):
                     break
 
                 packet = conn.recv(4096)
-                msg = packet.split('::')
 
-                if len(msg) < 2:
-                    msg = 'empty message: {}, from {}'.format(packet, addr)
-                    self.log.error(msg)
-                    self.cache.set('empty{}'.format(time()), msg)
+                if len(packet) == 0:
+                    # If this occurs, this process is dead and connection must be reset from the main PS process
+                    self.log.info('{} closed socket'.format(addr))
+
+                    # re-establish connection
+                    self.pc.reconnect(addr)
+
+                elif len(packet) < 2:
+                    self.log.error('invalid message: {}, from {}'.format(packet, addr))
                     conn.sendall(self.__format_msg('invalid'))
-                    # return
+                else:
+                    msg = packet.split('::')
 
-                expected = int(msg[0])
-                data = msg[1]
+                    try:
+                        expected = int(msg[0])
+                        data = msg[1]
+                    except ValueError as e:
+                        self.log.error(msg)
+                        conn.sendall(self.__format_msg('invalid'))
 
-                while len(data) < expected:
-                    # TODO change this to array join, string concat will get expensive if packets are large
-                    data += conn.recv(min(expected - len(data), 4096))
+                    while len(data) < expected:
+                        # TODO change this to array join, string concat will get expensive if packets are large
+                        data += conn.recv(min(expected - len(data), 4096))
 
-                logging.info('ps.receive() addr:{}'.format(addr))
-                try:
-                    resp = self.__route({"addr": addr, "length": expected, "content": ujson.loads(data)})
-                except ValueError as e:
-                    raise Exception(e)
+                    logging.info('ps.receive() addr:{}'.format(addr))
+                    try:
+                        resp = self.__route({"addr": addr, "length": expected, "content": ujson.loads(data)})
+                    except ValueError as e:
+                        raise Exception(e)
 
-                if resp == 'invalid':
-                    self.log.error('invalid message: {} from: {}'.format(data, str(addr)))
+                    if resp == 'invalid':
+                        self.log.error('invalid message: {} from: {}'.format(data, str(addr)))
 
-                conn.sendall(self.__format_msg(resp))
+                    conn.sendall(self.__format_msg(resp))
 
         except ValueError as e:
             self.log.exception(e)
@@ -380,6 +389,7 @@ class ParameterServer(object):
         self.cache.set('edges', int(self.cache.get('edges'))-1)
         self.count_lock.release()
         log.info('hyperedge training complete')
+        log.info('self.pc: {}'.format(str(self.pc)))
 
 
     '''

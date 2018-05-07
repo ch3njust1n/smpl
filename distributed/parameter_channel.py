@@ -26,30 +26,60 @@ class ParameterChannel(object):
 
 
     '''
+    Format peer's host and port information
+
+    Input:  peer (dict, tuple, or list) Object containing peer information
+    Output: addr (string) Formatted address key
+    '''
+    def addr_key(self, peer):
+        if isinstance(peer, dict):
+            return (peer['host'], peer['port']), '{}:{}'.format(peer['host'], peer['port'])
+        elif isinstance(peer, tuple) or isinstance(peer, list):
+            return tuple(peer), '{}:{}'.format(peer[0], peer[1])
+        else:
+            raise Exception('invalid type')
+
+
+    '''
     Connect to a single peer
 
     Input: peer (dict) Dictionary contains address information
     '''
     def connect(self, peer):
+        addr_tup, addr_key = self.addr_key(peer)
 
-        address = '{}:{}'.format(peer['host'], peer['port'])
+        if addr_key in self.connections:
+            del self.connections[addr_key]
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        while address not in self.connections:
+        while addr_key not in self.connections:
 
             try:
-                sock.connect((peer['host'], peer['port']))
-                # self.connections[address] = sock
-                tmp = self.connections
-                tmp[address] = sock
-                self.connections = tmp
+                sock.connect(addr_tup)
+                self.connections[addr_key] = sock
+                # tmp = self.connections
+                # tmp[address] = sock
+                # self.connections = tmp
             except socket.error as sock_err:
                 sleep(1)
-                self.log.error('{}, addr: {}'.format(str(sock_err), address))
+                self.log.error('{}, addr: {}'.format(str(sock_err), addr_key))
             except KeyError as key_err:
                 self.log.error(str(key_err))
 
-        self.log.info('success {} connected'.format(address))
+        self.log.info('success {} connected'.format(addr_key))
+        return addr_key in self.connections
+
+
+
+    '''
+    Wrapper for reconnecting so that can log this API call
+
+    Input: peer (tuple) Tuple containing a peer's host and port information
+    '''
+    def reconnect(self, peer):
+        self.log.info('reconnecting to {}'.format(peer))
+        self.connect(peer)
 
 
     '''
@@ -120,13 +150,14 @@ class ParameterChannel(object):
 
             sock = self.connections[addr]
             msg = self.__format_msg(msg)
+
             sock.sendall(msg)
             
             # Look for the response
             resp = sock.recv(4096).split('::')
 
             if 'invalid' in resp:
-                self.log.debug('addr: {}, msg: {}'.format(addr, msg))
+                self.log.debug('invalid addr: {}, msg: {}'.format(addr, msg))
             
             # Check that a length is given
             if len(resp[0]) > 0:
@@ -173,6 +204,8 @@ class ParameterChannel(object):
 
     '''
     Remove a particular peer from the active connections list
+
+    Input: peer ()
     '''
     def remove(self, peer):
 
@@ -202,3 +235,10 @@ class ParameterChannel(object):
         self.connections.clear()
 
         self.log.info('closed all connections')
+
+
+    '''
+    Return all active connections
+    '''
+    def __str__(self):
+        return str(self.connections)
