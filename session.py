@@ -44,23 +44,22 @@ def main():
 	if args.size:
 		print('{} (bytes)'.format(sys.getsizeof(sess)))
 
-	if args.ignore != None:
+	result = sess
+	if args.property != None:
+		result = 'key:{}, value: {}'.format(args.property, sess[args.property])
+	elif args.properties:
+		result = 'properties: {}'.format(list(sess.keys()))
+	elif args.ignore != None:
 		for k in args.ignore:
 			if k in sess:
 				del sess[k]
-		pprint(sess)
+		result = sess
 	elif args.minimal:
 		for k in ['parameters', 'gradients']:
 			if k in sess:
 				del sess[k]
-		pprint(sess)
-	else:
 		result = sess
-		if args.property != None:
-			result = 'key:{}, value: {}'.format(args.property, sess[args.property])
-		if args.properties:
-			result = 'properties: {}'.format(list(sess.keys()))
-		pprint(result)
+	pprint(result)
 
 
 if __name__ == '__main__':

@@ -389,7 +389,6 @@ class ParameterServer(object):
         self.cache.set('edges', int(self.cache.get('edges'))-1)
         self.count_lock.release()
         log.info('hyperedge training complete')
-        log.info('self.pc: {}'.format(str(self.pc)))
 
 
     '''
@@ -517,6 +516,12 @@ class ParameterServer(object):
         log = logging.getLogger()
         log.info('api:synchronize_parameters')
 
+        # Remove itself from its own peer list
+        for i, p in enumerate(peers):
+            if p['host'] == self.me['host']:
+                peers.pop(i)
+                break
+
         ok = False
         peers.append(sender)
 
@@ -600,7 +605,6 @@ class ParameterServer(object):
 
         # Synchronize parameters of model with best validation accuracy
         for i, send_to in enumerate(peers):
-            args[2].pop(i)
             Thread(target=self.pc.send, 
                 args=(send_to['host'], send_to['port'],
                       {"api": "synchronize_parameters", "args": args},)).start()
