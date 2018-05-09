@@ -52,20 +52,12 @@ def main():
                         help='Directory to save trained model parameters to')
     parser.add_argument('--seed', type=int, default=-1, help='Random seed for dev only!')
     parser.add_argument('--shuffle', type=bool, default=True, help='True if data should be shuffled (default: True)')
-    parser.add_argument('--sparsity', type=percent, default=0.0, help='Parameter sharing sparsification level (default: 0.0)')
-    parser.add_argument('--strategy', type=strategy, default='rand', help='Clique formation strategy')
-    parser.add_argument('--train_rank', type=percent, default=0.8, help='Training set scale factor for model rank. \
-                        (default: 0.8)')
+    parser.add_argument('--sparsity', type=percent, default=0.5, help='Parameter sharing sparsification level (default: 0.0)')
     parser.add_argument('--uniform', '-u', type=edge_size, default=2, help='Hyperedge size (default: 2)')
-    parser.add_argument('--val_rank', type=percent, default=0.2, help='Validation set scale factor for model rank. \
-                        (default: 0.2)')
     parser.add_argument('--variety', type=int, default=1, 
                         help='Minimum number of new members required in order to enter into a new clique. \
                         Prevents perfectly overlapping with current sessions.')
     args = parser.parse_args()
-
-    if args.val_rank + args.train_rank != 1:
-        argparse.ArgumentTypeError('Error: val_rank + train_rank must equal 1!')
 
     # Launch parameter server
     try:

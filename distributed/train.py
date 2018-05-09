@@ -32,7 +32,7 @@ class Train(DevTrainer):
         super(Train, self).__init__(*config)
 
         # Training settings
-        self.batch_size = 16
+        self.batch_size = 32
         self.epochs = 1
         self.log_interval = 100
         self.lr = 1

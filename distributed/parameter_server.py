@@ -29,7 +29,7 @@ class ParameterServer(object):
         self.ds_port        = args.ds_port
         self.host           = args.host
         self.port           = args.port
-        self.workers        = (cpu_count()-args.uniform)/(args.uniform)
+        self.workers        = (cpu_count()-args.regular)/(args.regular)
 
         self.async_global   = args.async_global
         self.async_mid      = args.async_mid
@@ -51,10 +51,7 @@ class ParameterServer(object):
         self.seed           = args.seed
         self.shuffle        = args.shuffle
         self.sparsity       = args.sparsity
-        self.strategy       = args.strategy
-        self.train_rank     = args.train_rank
         self.uniform        = args.uniform-1
-        self.val_rank       = args.val_rank
 
         self.__clear_port()
 
@@ -339,7 +336,7 @@ class ParameterServer(object):
         sess = ujson.loads(self.cache.get(sess_id))
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
-        multistep = nn.multistep_grad(sess['parameters'], sparsify=True)
+        multistep = nn.multistep_grad(sess['parameters'], k=self.sparsity, sparsify=True)
         self.__allreduce(sess_id, sess, multistep, sess['train_size'], log)
 
         # Final validation
@@ -558,7 +555,7 @@ class ParameterServer(object):
     Initiates a hyperedge training session. This is only called from ps.train_hyperedge().
 
     Output: ok      (bool)
-            sess_id (string)
+            sess_id (string) Session id or empty string if could not establish a session
     '''
     def __init_session(self, log=None, log_path=''):
         log.info('ps.__init_session')
@@ -571,9 +568,6 @@ class ParameterServer(object):
 
         # if can't connect with other peers, respond indicating failure
         if len(peers) == 0:
-            log.info('removing dead session')
-            # remove dead session from cache
-            self.cache.delete(sess_id)
             return ''
 
         # sort by accuracy in descending order and cache as current session
@@ -612,19 +606,6 @@ class ParameterServer(object):
             raise Exception('Error: key insertion failure {}'.format(sess_id))
 
         return sess_id
-
-
-    '''
-    Internal API
-    Get rank (float) of session model [0,100] where 
-    100 is the lowest score and 0 is the highest
-
-    Input:  sess_id (string) Session id
-    '''
-    def rank(self, sess_id, log=None):
-        pass
-        # model = ujson.loads(self.cache.get(sess_id))
-        # model['rank'] = model['accuracy']*(self.val_rank/model['val_size'] + self.train_rank/model['train_size'])
 
 
     '''
