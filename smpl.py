@@ -33,13 +33,13 @@ def main():
                         the dataset is not divisible by the batch size (default: False)')
     parser.add_argument('--ds_host', type=str, default='128.31.26.25', help='Data server host address')
     parser.add_argument('--ds_port', type=int, default=9888, help='Data server port')
-    parser.add_argument('--epochs', '-e', type=int, default=10, help='Total number of epochs across all cliques for \
-                        this peer')
     parser.add_argument('--epsilon', '-x', type=percent, default=0.3, help='Chance of selecting a \
                         random set model during parametere synchronization. (default: 0.3)')
     parser.add_argument('--eth', type=str, default='ens3', help='Peers\' ethernet interface (default: ens3)')
     parser.add_argument('--flush', '-f', type=str2bool, default=True, help='Clear all parameters from previous \
                         sessions')
+    parser.add_argument('--hyperepochs', '-e', type=int, default=1, help='Total number of hyperepochs \
+                        across all cliques for this peer (default: 1)')
     parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
     parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate e.g i = 10^(-i)')

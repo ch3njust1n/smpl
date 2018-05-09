@@ -39,9 +39,9 @@ class ParameterServer(object):
         self.data           = args.data
         self.dev            = args.dev
         self.drop_last      = args.drop_last
-        self.epochs         = args.epochs
-        self.eth            = args.eth
         self.epsilon        = args.epsilon
+        self.eth            = args.eth
+        self.hyperepochs    = args.hyperepochs
         self.log_freq       = args.log_freq
         self.name           = args.name
         self.parallel       = args.local_parallel
@@ -58,7 +58,6 @@ class ParameterServer(object):
         # Locks
         self.edge_lock = Lock()
         self.count_lock = Lock()
-        self.train_lock = Lock()
 
         # Get data
         Thread(target=self.__load_data).start()
@@ -147,7 +146,7 @@ class ParameterServer(object):
 
         try:
             while True:
-                if int(self.cache.get('hyperedges')) == self.epochs:
+                if int(self.cache.get('hyperedges')) == self.hyperepochs:
                     self.log.info('ps.listen teardown')
                     self.pc.teardown()
                     break
@@ -176,7 +175,7 @@ class ParameterServer(object):
             packet = ''
             # Process that maintains a hyperedge
             while 1:
-                if int(self.cache.get('hyperedges')) == self.epochs:
+                if int(self.cache.get('hyperedges')) == self.hyperepochs:
                     self.log.info('ps.receive: training complete')
                     break
 
@@ -270,15 +269,17 @@ class ParameterServer(object):
     where no one joins anyone else's hyperedge and all peers request each other.
     '''
     def __async_train(self):
-        # while int(self.cache.get('hyperedges')) < self.epochs:
-        #     sleep(random())
-        #     # self.edge_lock.acquire()
-        #     while int(self.cache.get('curr_edges')) <= self.regular:
-        #         sleep(random())
+        # while 1:
+        #     if int(self.cache.get('hyperedges')) >= self.hyperepochs:
+        #         break
+        #     elif int(self.cache.get('curr_edges')) < self.regular:
         #         Process(target=self.__train_hyperedge).start()
-        #         # self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-        #     self.edge_lock.acquire()
-        #### CREATE ONLY ONE HYPEREDGE FOR DEV ONLY
+        #         self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
+        #         break
+        #     else:
+        #         sleep(random())
+        # self.log.info('Hypergraph Training Complete')
+        sleep(random())
         Process(target=self.__train_hyperedge).start()
 
 
@@ -297,6 +298,7 @@ class ParameterServer(object):
         while len(sess_id) == 0:
             sess_id = self.__init_session(log=log, log_path=log_path)
             sleep(random())
+        log.info('session id: {}'.format(sess_id))
 
         # Save log file path
         sess = ujson.loads(self.cache.get(sess_id))
