@@ -131,12 +131,13 @@ class Network(nn.Module):
 
     Input:  network   Parameters which can be in the form of a Network object, list of tensors, or nested
                       list of lists
-            sparsify  (bool) If True, return sparse parameters with their corresponding coordinates as a nested 
-                             list of lists
-            tolist    (bool) If True, return parameters as a nested list of lists
-    Output: gradients (list) A list of torch.FloatTensors representing the difference between the network parameters
+            k         (float) Sparsity parameter
+            sparsify  (bool)  If True, return sparse parameters with their corresponding coordinates as a nested 
+                              list of lists
+            tolist    (bool)  If True, return parameters as a nested list of lists
+    Output: gradients (list)  A list of torch.FloatTensors representing the difference between the network parameters
     '''
-    def multistep_grad(self, network, sparsify=False, tolist=False):
+    def multistep_grad(self, network, k=0.8, sparsify=False, tolist=False):
         # MAY NEED TO MAKE b IN EACH OF THESES CASES A TENSOR e.g. b.data-a instead of b-a        
         gradients = []
 
@@ -154,7 +155,7 @@ class Network(nn.Module):
             self.log.debug('multistep error')
             raise Exception('Error: {} type not supported'.format(type(network)))
 
-        return pt.largest_k(gradients) if sparsify else [g.data.tolist() for g in gradients] if tolist else gradients
+        return pt.largest_k(gradients, k=k) if sparsify else [g.data.tolist() for g in gradients] if tolist else gradients
 
 
     '''

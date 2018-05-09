@@ -64,7 +64,7 @@ Input: tensors (list) List of PyTorch FloatTensors
 Output: (list) List of lists containing coordinates-parameter pairs
         e.g. [[[0, 0, 0], -0.43671706318855286], [[0, 0, 1], -0.4151779115200043], [[1, 0, 0], 0.19337968528270721]]
 '''
-def largest_k(tensors, k=1, percent=True, zeros=True):
+def largest_k(tensors, k=1, percent=True, zeros=False):
     
     flat = []
     dims = []
