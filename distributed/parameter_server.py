@@ -272,17 +272,15 @@ class ParameterServer(object):
     for hyperedges created by other peers that this peer has joined else will cause a deadlock
     where no one joins anyone else's hyperedge and all peers request each other.
     '''
-    # def __async_train(self):
-    #     while int(self.cache.get('epochs')) < self.epochs:
-    #         Process(target=self.train_hyperedge).start()
-            
-    #         self.train_lock.acquire()
-    #         edge_count = int(self.cache.get('edges'))
-    #         while edge_count == self.max:
-    #             self.log.info('he_count: {}'.format(edge_count))
-    #             self.train_lock.release()
-    #             sleep(random())
     def __async_train(self):
+        # while int(self.cache.get('epochs')) < self.epochs:
+        #     sleep(random())
+        #     # self.edge_lock.acquire()
+        #     while int(self.cache.get('edges')) <= self.max:
+        #         sleep(random())
+        #         Process(target=self.__train_hyperedge).start()
+        #         # self.cache.set('edges', int(self.cache.get('edges'))+1)
+        #     self.edge_lock.acquire()
         #### CREATE ONLY ONE HYPEREDGE FOR DEV ONLY
         Process(target=self.__train_hyperedge).start()
 
@@ -303,7 +301,6 @@ class ParameterServer(object):
             sess_id = self.__init_session(log=log, log_path=log_path)
             sleep(random())
 
-        
         # Save log file path
         sess = ujson.loads(self.cache.get(sess_id))
         sess["log"] = log_path
@@ -374,8 +371,12 @@ class ParameterServer(object):
         # increment total successful training epoches and hyperedges
         self.count_lock.acquire()
         self.cache.set('epochs', int(self.cache.get('epochs'))+1)
-        self.cache.set('edges', int(self.cache.get('edges'))-1)
         self.count_lock.release()
+
+        # self.edge_lock.acquire()
+        self.cache.set('edges', int(self.cache.get('edges'))-1)
+        # self.edge_lock.release()
+
         log.info('hyperedge training complete')
 
 
@@ -545,6 +546,9 @@ class ParameterServer(object):
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
+        # self.edge_lock.acquire()
+        self.cache.set('edges', int(self.cache.get('edges'))+1)
+        # self.edge_lock.release()
 
         return ok
 
@@ -703,7 +707,6 @@ class ParameterServer(object):
         # Ensures that HDSGD forms a simple hypergraph
         while possible_cliques:
             clique = possible_cliques.pop(0)
-
             if hash(str(clique)) not in sess_hash:
                 return list(clique)
 
@@ -761,7 +764,10 @@ class ParameterServer(object):
             return {}
         else:
             # Increment hyperedge count
+            # self.edge_lock.acquire()
             self.cache.set('edges', int(self.cache.get('edges'))+1)
+            # self.edge_lock.release()
+
             record = ujson.loads(self.cache.get('best'))
             
             me = dict(self.me)

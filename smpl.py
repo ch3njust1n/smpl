@@ -45,7 +45,7 @@ def main():
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
     parser.add_argument('--lr', '-r', type=int, default=1e-3, help='Learning rate e.g i = 10^(-i)')
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training')
-    parser.add_argument('--max', '-m', default=cpu_count(), help='Maximum number of simultaneous cliques')
+    parser.add_argument('--max', '-m', default=3, help='Maximum number of simultaneous cliques')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file.')
     parser.add_argument('--save', '-s', type=str, default='model/save', 
