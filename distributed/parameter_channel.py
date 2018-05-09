@@ -6,7 +6,7 @@
 	Module of handling communication between the training loop and the ParameterServer
 '''
 
-import socket, ujson
+import socket, ujson, select
 from multiprocessing import Manager
 from threading import Thread
 from time import sleep
@@ -156,6 +156,14 @@ class ParameterChannel(object):
 
             sock = self.connections[addr]
             msg = self.format_msg(msg)
+
+            try:
+                ok_read, ok_write, error = select.select([sock,], [sock,], [], 5)
+            except select.error:
+                sock.shutdown(2)
+                sock.close()
+                self.reconnect((host, port))
+                sock = self.connections[addr]
 
             sock.sendall(msg)
             
