@@ -29,13 +29,12 @@ class ParameterServer(object):
         self.ds_port        = args.ds_port
         self.host           = args.host
         self.port           = args.port
-        self.workers        = (cpu_count()-args.clique)/(args.clique)
+        self.workers        = (cpu_count()-args.uniform)/(args.uniform)
 
         self.async_global   = args.async_global
         self.async_mid      = args.async_mid
         self.async_local    = args.async_local
         self.batch_size     = args.batch_size
-        self.clique         = args.clique-1
         self.cuda           = args.cuda
         self.data           = args.data
         self.dev            = args.dev
@@ -44,16 +43,17 @@ class ParameterServer(object):
         self.eth            = args.eth
         self.epsilon        = args.epsilon
         self.log_freq       = args.log_freq
-        self.max            = args.max
         self.name           = args.name
         self.parallel       = args.local_parallel
         self.party          = args.party
+        self.regular        = args.regular
         self.save           = args.save
         self.seed           = args.seed
         self.shuffle        = args.shuffle
         self.sparsity       = args.sparsity
         self.strategy       = args.strategy
         self.train_rank     = args.train_rank
+        self.uniform        = args.uniform-1
         self.val_rank       = args.val_rank
 
         self.__clear_port()
@@ -112,9 +112,9 @@ class ParameterServer(object):
         #                                    "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
         self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
                                             "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()]}))
-        self.cache.set('server', ujson.dumps({"clique": self.clique, "host": self.host, "port": self.port}))
-        self.cache.set('edges', 0)
-        self.cache.set('epochs', 0)
+        self.cache.set('server', ujson.dumps({"clique": self.uniform, "host": self.host, "port": self.port}))
+        self.cache.set('curr_edges', 0)
+        self.cache.set('hyperedges', 0)
 
         # Setup TCP connections to all peers
         self.tcp_conn = {}
@@ -150,7 +150,7 @@ class ParameterServer(object):
 
         try:
             while True:
-                if int(self.cache.get('epochs')) == self.epochs:
+                if int(self.cache.get('hyperedges')) == self.epochs:
                     self.log.info('ps.listen teardown')
                     self.pc.teardown()
                     break
@@ -179,7 +179,7 @@ class ParameterServer(object):
             packet = ''
             # Process that maintains a hyperedge
             while 1:
-                if int(self.cache.get('epochs')) == self.epochs:
+                if int(self.cache.get('hyperedges')) == self.epochs:
                     self.log.info('ps.receive: training complete')
                     break
 
@@ -268,18 +268,18 @@ class ParameterServer(object):
     Internal API
     Wrapper function for train(). Continue to initiate hyperedges while
     your current hyperedge count is less than the specified max. Iterating in this fashion
-    instead of spawning max processes at once and using join() allows self.cache.get('edges') to account
+    instead of spawning max processes at once and using join() allows self.cache.get('curr_edges') to account
     for hyperedges created by other peers that this peer has joined else will cause a deadlock
     where no one joins anyone else's hyperedge and all peers request each other.
     '''
     def __async_train(self):
-        # while int(self.cache.get('epochs')) < self.epochs:
+        # while int(self.cache.get('hyperedges')) < self.epochs:
         #     sleep(random())
         #     # self.edge_lock.acquire()
-        #     while int(self.cache.get('edges')) <= self.max:
+        #     while int(self.cache.get('curr_edges')) <= self.regular:
         #         sleep(random())
         #         Process(target=self.__train_hyperedge).start()
-        #         # self.cache.set('edges', int(self.cache.get('edges'))+1)
+        #         # self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
         #     self.edge_lock.acquire()
         #### CREATE ONLY ONE HYPEREDGE FOR DEV ONLY
         Process(target=self.__train_hyperedge).start()
@@ -370,11 +370,11 @@ class ParameterServer(object):
 
         # increment total successful training epoches and hyperedges
         self.count_lock.acquire()
-        self.cache.set('epochs', int(self.cache.get('epochs'))+1)
+        self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
         self.count_lock.release()
 
         # self.edge_lock.acquire()
-        self.cache.set('edges', int(self.cache.get('edges'))-1)
+        self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
         # self.edge_lock.release()
 
         log.info('hyperedge training complete')
@@ -547,7 +547,7 @@ class ParameterServer(object):
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
         # self.edge_lock.acquire()
-        self.cache.set('edges', int(self.cache.get('edges'))+1)
+        self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
         # self.edge_lock.release()
 
         return ok
@@ -689,7 +689,7 @@ class ParameterServer(object):
     '''
     def get_unique_clique(self, peers, log=None):
         log.info('ps.get_unique_clique')
-        possible_cliques = list(combinations(peers, self.clique))
+        possible_cliques = list(combinations(peers, self.uniform))
         shuffle(possible_cliques)
         # [({u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1}, 
         #   {u'alias': u'smpl', u'host': u'192.168.0.12', u'port': 9888, u'id': 0})]
@@ -736,10 +736,10 @@ class ParameterServer(object):
             if len(resp) > 0:
                 peers.append(resp)
 
-            if len(peers) >= self.clique:
+            if len(peers) >= self.uniform:
                 break
 
-        return peers[:self.clique]
+        return peers[:self.uniform]
 
 
     '''
@@ -757,7 +757,7 @@ class ParameterServer(object):
         while not self.edge_lock.acquire():
             sleep(0.1)
 
-        if int(self.cache.get('edges')) == self.max:
+        if int(self.cache.get('curr_edges')) == self.regular:
             log.info('maxed hyperedges')
             self.edge_lock.release()
 
@@ -765,7 +765,7 @@ class ParameterServer(object):
         else:
             # Increment hyperedge count
             # self.edge_lock.acquire()
-            self.cache.set('edges', int(self.cache.get('edges'))+1)
+            self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
             # self.edge_lock.release()
 
             record = ujson.loads(self.cache.get('best'))

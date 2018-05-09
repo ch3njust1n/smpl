@@ -26,7 +26,6 @@ def main():
     parser.add_argument('--async_local', type=bool, default=False, help='Set for asynchronous training on each peer (default: True)')
     parser.add_argument('--batch_size', type=int, default=16, help='Data batch size (default: 16)')
     parser.add_argument('--cuda', type=str2bool, default=False, help='Enables CUDA training (default: False)')
-    parser.add_argument('--clique', '-c', type=clique_size, default=2, help='Clique size (default: 2)')
     parser.add_argument('--data', '-d', type=str, default='mnist', help='Data directory')
     parser.add_argument('--dev', '-v', type=str2bool, default=True, help='Development mode will fix random \
                         seed and keep session objects for analysis (default: True)')
@@ -43,11 +42,12 @@ def main():
                         sessions')
     parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
-    parser.add_argument('--lr', '-r', type=int, default=1e-3, help='Learning rate e.g i = 10^(-i)')
+    parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate e.g i = 10^(-i)')
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training')
-    parser.add_argument('--max', '-m', default=3, help='Maximum number of simultaneous cliques')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file.')
+    parser.add_argument('--regular', '-r', default=3, help='Maximum number of simultaneous hyperedges at \
+                        any given time (default: 3)')
     parser.add_argument('--save', '-s', type=str, default='model/save', 
                         help='Directory to save trained model parameters to')
     parser.add_argument('--seed', type=int, default=-1, help='Random seed for dev only!')
@@ -56,6 +56,7 @@ def main():
     parser.add_argument('--strategy', type=strategy, default='rand', help='Clique formation strategy')
     parser.add_argument('--train_rank', type=percent, default=0.8, help='Training set scale factor for model rank. \
                         (default: 0.8)')
+    parser.add_argument('--uniform', '-u', type=edge_size, default=2, help='Hyperedge size (default: 2)')
     parser.add_argument('--val_rank', type=percent, default=0.2, help='Validation set scale factor for model rank. \
                         (default: 0.2)')
     parser.add_argument('--variety', type=int, default=1, 
@@ -94,7 +95,7 @@ def percent(value):
     return value
 
 
-def clique_size(size):
+def edge_size(size):
 
     if type(size) != int:
         raise argparse.ArgumentTypeError('Error: Clique size must be an integer: {}'.format(size))
