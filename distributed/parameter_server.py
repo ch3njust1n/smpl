@@ -269,18 +269,23 @@ class ParameterServer(object):
     where no one joins anyone else's hyperedge and all peers request each other.
     '''
     def __async_train(self):
-        # while 1:
-        #     if int(self.cache.get('hyperedges')) >= self.hyperepochs:
-        #         break
-        #     elif int(self.cache.get('curr_edges')) < self.regular:
-        #         Process(target=self.__train_hyperedge).start()
-        #         self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-        #         break
-        #     else:
-        #         sleep(random())
-        # self.log.info('Hypergraph Training Complete')
-        sleep(random())
-        Process(target=self.__train_hyperedge).start()
+        while 1:
+            if int(self.cache.get('hyperedges')) >= self.hyperepochs:
+                self.log.debug('here1')
+                break
+            elif int(self.cache.get('curr_edges')) < self.regular:
+                # self.log.debug('here2')
+                sleep(random())
+                Process(target=self.__train_hyperedge).start()
+                self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
+                # break
+            else:
+                # self.log.debug('here3')
+                sleep(random())
+        self.log.info('Hypergraph Training Complete')
+        # if int(self.cache.get('curr_edges')) < self.regular:
+        #     Process(target=self.__train_hyperedge).start()
+        #     self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
 
     '''
@@ -439,7 +444,16 @@ class ParameterServer(object):
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
         while 1:
-            share_count = ujson.loads(self.cache.get(sess_id))['share_count']
+            sess = ujson.loads(self.cache.get(sess_id))
+            share_count = sess['share_count']
+            # party = list(sess['party'])
+
+            # for p, peer in enumerate(party):
+            #     if not self.pc.alive(peer['host'], peer['port']):
+            #         sess['party'].pop(p)
+
+            # self.cache.set(sess_id, ujson.dumps(sess))
+
             if int(share_count) == len(sess['party']): break
             if int(share_count) > len(sess['party']):
                 log.error('share_count: {} > sess[party]: {}'.format(int(share_count), len(sess['party'])))
@@ -737,12 +751,16 @@ class ParameterServer(object):
         log, log_path = utils.log(self.log_dir, '{}-{}'.format(self.me['id'], sess_id))
         log.info('api:establish_session')
 
-        while not self.edge_lock.acquire():
+        while not self.edge_lock.acquire(False):
             sleep(0.1)
 
         if int(self.cache.get('curr_edges')) == self.regular:
             log.info('maxed hyperedges')
             self.edge_lock.release()
+            # remove log
+            log_path = os.path.join(self.log_dir, '{}.log'.format(sess_id))
+            if os.path.isfile(log_path):
+                os.remove(log_path)
 
             return {}
         else:
@@ -758,7 +776,7 @@ class ParameterServer(object):
 
             # CHECK FOR UNIQUE HYPEREDGES AGAIN AND IF A SESSION IN THE CACHE ALREADY HAS ALL THESE
             # PEERS EXACTLY, THEN ABORT THIS CURRENT SESSION
-            self.cache.set(sess_id, ujson.dumps({"id": sess_id, "peers": [], "log": log_path, 
+            self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path, #"peers": [],
                                                  "share_train_sizes": 0, "share_count": 0, 
                                                  "gradients": []}))
             self.edge_lock.release()

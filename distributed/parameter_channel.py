@@ -1,9 +1,9 @@
 '''
-	Justin Chen
+    Justin Chen
 
-	7.9.17
+    7.9.17
 
-	Module of handling communication between the training loop and the ParameterServer
+    Module of handling communication between the training loop and the ParameterServer
 '''
 
 import socket, ujson, select
