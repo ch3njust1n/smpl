@@ -194,7 +194,7 @@ class ParameterServer(object):
 
                 elif len(packet) < 2:
                     self.log.error('invalid message: {}, from {}'.format(packet, addr))
-                    conn.sendall(self.__format_msg('invalid'))
+                    conn.sendall(self.pc.format_msg('invalid'))
                 else:
                     msg = packet.split('::')
 
@@ -203,7 +203,7 @@ class ParameterServer(object):
                         data = msg[1]
                     except ValueError as e:
                         self.log.error(msg)
-                        conn.sendall(self.__format_msg('invalid'))
+                        conn.sendall(self.pc.format_msg('invalid'))
 
                     while len(data) < expected:
                         # TODO change this to array join, string concat will get expensive if packets are large
@@ -218,7 +218,7 @@ class ParameterServer(object):
                     if resp == 'invalid':
                         self.log.error('invalid message: {} from: {}'.format(data, str(addr)))
 
-                    conn.sendall(self.__format_msg(resp))
+                    conn.sendall(self.pc.format_msg(resp))
 
         except ValueError as e:
             self.log.exception(e)
@@ -226,18 +226,6 @@ class ParameterServer(object):
         finally:
             self.log.info('closing connection')
             conn.close()
-
-
-    '''
-    Internal API
-    Protocol for SMPL PS external API calls
-
-    Input: msg (str)
-    Output: str
-    '''
-    def __format_msg(self, msg):
-        msg = ujson.dumps(msg)
-        return '{}::{}'.format(len(msg), msg)
 
 
     '''
@@ -768,6 +756,8 @@ class ParameterServer(object):
 
         if int(self.cache.get('edges')) == self.max:
             log.info('maxed hyperedges')
+            self.edge_lock.release()
+
             return {}
         else:
             # Increment hyperedge count
@@ -782,9 +772,9 @@ class ParameterServer(object):
             self.cache.set(sess_id, ujson.dumps({"id": sess_id, "peers": [], "log": log_path, 
                                                  "share_train_sizes": 0, "share_count": 0, 
                                                  "gradients": []}))
-        self.edge_lock.release()
+            self.edge_lock.release()
         
-        return me
+            return me
 
 
     '''

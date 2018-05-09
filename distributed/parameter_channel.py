@@ -103,9 +103,15 @@ class ParameterChannel(object):
     Input:  msg (dict) API function call and parameters
     Output: (string) response
     '''
-    def __format_msg(self, msg):
+    def format_msg(self, msg):
         msg = ujson.dumps(msg)
-        return '{}::{}'.format(len(msg), msg)
+        size = 0
+        try:
+            size = len(msg)
+        except TypeError as e:
+            msg = str(msg)
+            size = len(msg)
+        return '{}::{}'.format(size, msg)
 
 
     '''
@@ -149,7 +155,7 @@ class ParameterChannel(object):
                 return False, ''
 
             sock = self.connections[addr]
-            msg = self.__format_msg(msg)
+            msg = self.format_msg(msg)
 
             sock.sendall(msg)
             
