@@ -46,8 +46,7 @@ def pull_logs():
 Check if all the sessions completed training
 '''
 def check_logs(log_dir):
-	if len(os.listdir(log_dir)) == 0:
-		pull_logs()
+	pull_logs()
 
 	while len(os.listdir(log_dir)) == 0:
 		sleep(0.5)
