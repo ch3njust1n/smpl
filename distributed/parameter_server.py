@@ -677,15 +677,16 @@ class ParameterServer(object):
         # can't tell the diference between active and inactive sessions because completed sessions
         # do no remove themselves from the redis cache
         if self.dev:
-            sessions_copy = list(sessions)
-            for i, sess in enumerate(sessions_copy):
+            active = []
+            for i, sess in enumerate(sessions):
                 if ujson.loads(sess)['done']:
-                    sessions.pop(i)
-                    active_ids.pop(i)
+                    active.append((active_ids[i], sess))
 
-        # [(<sess_id>, {"parameters": model[0], "accuracy": model[1], "party": peers}), ...]
-        # peers = [{alias, host, port, accuracy}, ...]
-        return zip(active_ids, sessions)
+            return active
+        else:
+            # [(<sess_id>, {"parameters": model[0], "accuracy": model[1], "party": peers}), ...]
+            # peers = [{alias, host, port, accuracy}, ...]
+            return zip(active_ids, sessions)
 
 
     '''
