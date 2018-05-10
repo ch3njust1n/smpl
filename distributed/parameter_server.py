@@ -271,22 +271,15 @@ class ParameterServer(object):
     def __async_train(self):
         while 1:
             if int(self.cache.get('hyperedges')) >= self.hyperepochs:
-                self.log.debug('here1')
                 break
             elif int(self.cache.get('curr_edges')) < self.regular:
-                # self.log.debug('here2')
                 sleep(random())
                 Process(target=self.__train_hyperedge).start()
                 self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
                 self.log.debug('num logs: {}'.format(len([name for name in os.listdir(self.log_dir) if name.endswith('.log')])))
-                # break
             else:
-                # self.log.debug('here3')
                 sleep(random())
         self.log.info('Hypergraph Training Complete')
-        # if int(self.cache.get('curr_edges')) < self.regular:
-        #     Process(target=self.__train_hyperedge).start()
-        #     self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
 
     '''
@@ -295,7 +288,7 @@ class ParameterServer(object):
     '''
     def __train_hyperedge(self):
         log, log_path = utils.log(self.log_dir, '{}-{}'.format(self.me['id'], utils.get_date()))
-        log.info('ps.__train_hyperedge')
+        log.info('train_hyperedge')
 
         connected = False
         sess_id = ''
@@ -356,6 +349,7 @@ class ParameterServer(object):
         # Validate model accuracy
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
+        sess["done"] = True
         self.cache.set(sess_id, ujson.dumps(sess))
 
         self.cleanup(sess_id, sess, log)
@@ -462,7 +456,7 @@ class ParameterServer(object):
                 raise Exception('share count cannot be greater than total party size')
             sleep(random())
 
-        self.log.info('done sync barrier')
+        log.info('done sync barrier')
 
 
     '''
@@ -618,7 +612,8 @@ class ParameterServer(object):
             self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
                                                 "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
                                                 "log": log_path, "share_count": 0, "gradients": [], 
-                                                "share_train_sizes": 0, "train_batches": 0, "val_batches": 0}))
+                                                "share_train_sizes": 0, "train_batches": 0, "val_batches": 0,
+                                                "done": False}))
         except IndexError as e:
             log.exception(e)
 
@@ -667,15 +662,27 @@ class ParameterServer(object):
     Internal API
     Get all active sessions
 
+    Input:  log   (Logger) Logger
     Output: list of tuples of sessions
     '''
     def active_sessions(self, log=None):
-        active_ids = [k for k in self.cache.scan_iter('sess*')]
+        active_ids = [k for k in self.cache.scan_iter('sess*')]    
 
         if len(active_ids) == 0:
             return []
 
         sessions = self.cache.mget(active_ids)
+
+        # In inference mode, sessions will delete themselves when complete. But in dev mode,
+        # can't tell the diference between active and inactive sessions because completed sessions
+        # do no remove themselves from the redis cache
+        if self.dev:
+            sessions_copy = list(sessions)
+            for i, sess in enumerate(sessions_copy):
+                if ujson.loads(sess)['done']:
+                    sessions.pop(i)
+                    active_ids.pop(i)
+
         # [(<sess_id>, {"parameters": model[0], "accuracy": model[1], "party": peers}), ...]
         # peers = [{alias, host, port, accuracy}, ...]
         return zip(active_ids, sessions)
@@ -777,11 +784,9 @@ class ParameterServer(object):
             me = dict(self.me)
             me['accuracy'] = record['accuracy']
 
-            # CHECK FOR UNIQUE HYPEREDGES AGAIN AND IF A SESSION IN THE CACHE ALREADY HAS ALL THESE
-            # PEERS EXACTLY, THEN ABORT THIS CURRENT SESSION
-            self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path, #"peers": [],
+            self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path,
                                                  "share_train_sizes": 0, "share_count": 0, 
-                                                 "gradients": []}))
+                                                 "gradients": [], "done": False}))
             self.edge_lock.release()
         
             return me
@@ -837,7 +842,7 @@ class ParameterServer(object):
     def stop(self):
         try:
             self.sock.close()
-            self.log.info('closing sockets')
+            self.log.info('exiting ps')
             sys.exit(0)
         except Exception as e:
             self.log.exception('Could not close ParameterServer socket')
