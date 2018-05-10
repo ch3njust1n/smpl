@@ -707,7 +707,7 @@ class ParameterServer(object):
         active = self.active_sessions(log=log)
         #  [('sess1343003545191620262', '{"peers": [], "id": "sess1343003545191620262"}')]
 
-        log.info('active: {}'.format(active))
+        log.info('len(active): {}'.format(len(active)))
 
         if len(active) == 0:
             return list(possible_cliques.pop(0))
@@ -721,6 +721,7 @@ class ParameterServer(object):
         while possible_cliques:
             clique = possible_cliques.pop(0)
             if hash(str(clique)) not in sess_hash:
+                log.info('return hash: {}'.format(hash(str(clique))))
                 return list(clique)
 
         log.info('clique: {}'.format(clique))

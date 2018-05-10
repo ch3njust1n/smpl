@@ -161,7 +161,7 @@ class ParameterChannel(object):
                 sock.sendall(msg)
                 resp = sock.recv(4096).split('::')
             except socket.error, e:
-                if e.errno == errno.ECONNRESET:
+                if e.errno == socket.errno.ECONNRESET:
                     sock.shutdown(2)
                     sock.close()
                     self.reconnect((host, port))
