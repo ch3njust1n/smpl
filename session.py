@@ -8,7 +8,7 @@
 '''
 
 from __future__ import division
-import redis, ujson, argparse, sys, os
+import redis, ujson, argparse, sys, os, subprocess
 from pprint import pprint
 
 
@@ -32,10 +32,25 @@ Display session object memory size
 def size(sess):
 	print('{} (bytes)'.format(sys.getsizeof(sess)))
 
+
+'''
+Aggregate logs from peers
+'''
+def pull_logs():
+	os.system('chmod +x pull.sh')
+	log_dir = os.path.join(os.getcwd(), 'logs', 'pull.sh')
+	subprocess.call(log_dir, shell=True)
+
+
 '''
 Check if all the sessions completed training
 '''
-def check_completed(log_dir):
+def check_logs(log_dir):
+	pull_logs()
+
+	while len(os.listdir(log_dir)) == 0:
+		sleep(0.5)
+
 	all_logs = [file for file in os.listdir(log_dir) if file.endswith('.log') and 'ps' not in file]
 	complete = 0
 	total = len(all_logs)
@@ -106,7 +121,7 @@ def main():
 		clear(args.log_dir)
 
 	if args.check:
-		check_completed(args.log_dir)
+		check_logs(args.log_dir)
 	
 	# Display all available keys
 	if args.keys:

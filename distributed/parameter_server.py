@@ -698,7 +698,6 @@ class ParameterServer(object):
     Output: clique (list) List of dics. 
     '''
     def get_unique_clique(self, peers, log=None):
-        log.info('ps.get_unique_clique')
         possible_cliques = list(combinations(peers, self.uniform))
         shuffle(possible_cliques)
         # [({u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1}, 
@@ -708,10 +707,14 @@ class ParameterServer(object):
         active = self.active_sessions(log=log)
         #  [('sess1343003545191620262', '{"peers": [], "id": "sess1343003545191620262"}')]
 
+        log.info('active: {}'.format(active))
+
         if len(active) == 0:
             return list(possible_cliques.pop(0))
 
         sess_hash = [hash(a) for a in active]
+
+        log.info('hash: {}'.format(sess_hash))
 
         # Check to ensure that overlapping cliques are not formed
         # Ensures that HDSGD forms a simple hypergraph
@@ -719,6 +722,8 @@ class ParameterServer(object):
             clique = possible_cliques.pop(0)
             if hash(str(clique)) not in sess_hash:
                 return list(clique)
+
+        log.info('clique: {}'.format(clique))
 
         return clique
 
