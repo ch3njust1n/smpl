@@ -46,8 +46,8 @@ def main():
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file.')
-    parser.add_argument('--regular', '-r', default=3, help='Maximum number of simultaneous hyperedges at \
-                        any given time (default: 3)')
+    parser.add_argument('--regular', '-r', default=1, help='Maximum number of simultaneous hyperedges at \
+                        any given time (default: 1)')
     parser.add_argument('--save', '-s', type=str, default='model/save', 
                         help='Directory to save trained model parameters to')
     parser.add_argument('--seed', type=int, default=-1, help='Random seed for dev only!')

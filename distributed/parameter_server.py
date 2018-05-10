@@ -205,7 +205,7 @@ class ParameterServer(object):
                         # TODO change this to array join, string concat will get expensive if packets are large
                         data += conn.recv(min(expected - len(data), 4096))
 
-                    logging.info('ps.receive() addr:{}'.format(addr))
+                    self.log.info('ps.receive() addr:{}'.format(addr))
                     try:
                         resp = self.__route({"addr": addr, "length": expected, "content": ujson.loads(data)})
                     except ValueError as e:

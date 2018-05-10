@@ -207,7 +207,7 @@ class ParameterChannel(object):
 
                 content = ujson.loads(content)
             else:
-                self.log.error('empty reply: {} for api:{}'.format(resp, msg))
+                self.log.error('empty reply from {} for api:{}'.format(addr, msg))
                 content = ''
         except Exception as e:
             self.log.exception(str(e))
