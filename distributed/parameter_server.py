@@ -435,7 +435,7 @@ class ParameterServer(object):
             log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
             Thread(target=self.pc.send, 
                    args=(send_to['host'], send_to['port'], 
-                         {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
+                         {"api": "share_grad", "args": [sess_id, self.me['alias'], hash(str(gradients)), gradients, sample_size]})).start()
 
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
@@ -469,7 +469,7 @@ class ParameterServer(object):
              samples   (int)  Number of samples sending peer used to generate given gradients
     Output:  ok        (bool) Bool indicating that session exists and values were updated
     '''
-    def __share_grad(self, sess_id, sender, gradients, samples):
+    def __share_grad(self, sess_id, sender, gradient_hash, gradients, samples):
         if not self.cache.exists(sess_id):
             print 'sessDNE sess_id: {}'.format(sess_id)
             return False
@@ -481,6 +481,9 @@ class ParameterServer(object):
             log_name = sess["log"]
             logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             log = logging.getLogger()
+
+            if gradient_hash != hash(str(gradients)):
+                log.error('gradient hash incorrect')
 
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)

@@ -34,12 +34,62 @@ def size(sess):
 
 
 '''
+Print files
+
+Input: files (list) List of files
+'''
+def print_files(files, title='files'):
+	# Print incomplete hyperedges
+	print '\n-----------\n{}:'.format(title)
+	for i in files:
+		print i
+	print '-----------'
+
+
+'''
 Aggregate logs from peers
 '''
 def pull_logs():
 	os.system('chmod +x ./logs/pull.sh')
 	log_dir = os.path.join(os.getcwd(), 'logs', 'pull.sh')
 	subprocess.call(log_dir, shell=True)
+
+
+'''
+Return all log files
+
+Input:  log_dir (string) Path to directory containing logs
+Output: logs    (list)   List of all log files
+'''
+def get_logs(log_dir):
+	return [os.path.join(log_dir, file) for file in os.listdir(log_dir) if file.endswith('.log') and 'ps' not in file]
+
+
+'''
+Find all files containing given term
+
+Input:  paths (list) List of file paths
+	    match (bool) If True, return list of files containing term
+	    			 Default: False
+Output: count (int)  Number of files containing term
+        files (list) List of file paths
+'''
+def grep_all(term, paths, match=True):
+	files = []
+	count = 0
+
+	for log in paths:
+		with open(log, 'r') as f:
+			log = log.split('/')[-1]
+
+			if term in f.read():
+				count += 1
+				if match:
+					files.append(log)
+			elif not match:
+				files.append(log)
+
+	return count, files
 
 
 '''
@@ -51,27 +101,13 @@ def check_logs(log_dir):
 	while len(os.listdir(log_dir)) == 0:
 		sleep(0.5)
 
-	all_logs = [file for file in os.listdir(log_dir) if file.endswith('.log') and 'ps' not in file]
-	complete = 0
+	all_logs = get_logs(log_dir)
 	total = len(all_logs)
-	incomplete = []
-	headers = ['status', 'hyperedge']
+	complete, incomplete = grep_all('hyperedge training complete', all_logs, match=False)
 
-	# Count completed hyperedges
-	for log in all_logs:
-		with open(os.path.join(log_dir, log), 'r') as file:
-			if 'hyperedge training complete' in file.read():
-				complete += 1
-			else:
-				incomplete.append(log)
+	print_files(incomplete, 'incomplete')
 
-	# Print incomplete hyperedges
-	print '\n-----------\nincomplete:'
-	for i in incomplete:
-		print i
-	print '-----------'
-
-	print('completed hyperedges: {}/{} ({}%)'.format(complete, total, complete/total))
+	print('completed hyperedges: {}/{} ({}%)'.format(complete, total, 100*complete/total))
 
 
 '''
@@ -103,6 +139,7 @@ def main():
 	parser.add_argument('--check', '-ch', action='store_true', help='Check that all hyperedges completed training')
 	parser.add_argument('--clear', action='store_true', help='Clear all logs')
 	parser.add_argument('--db', type=int, default=0, help='Redis db')
+	parser.add_argument('--grep', '-g', type=str, help='Grep all files for given term')
 	parser.add_argument('--ignore', '-i', type=str, nargs='+', help='Ignores a particular key/value in the session object')
 	parser.add_argument('--keys', '-k', action='store_true', help='Get all Redis keys')
 	parser.add_argument('--log_dir', '-l', type=str, default=os.path.join(os.getcwd(), 'logs'), help='Log directory')
@@ -122,6 +159,13 @@ def main():
 
 	if args.check:
 		check_logs(args.log_dir)
+
+	if args.grep != None:
+		all_logs = get_logs(args.log_dir)
+		total = len(all_logs)
+		count, files = grep_all(args.grep, all_logs)
+		print_files(files, 'matching files')
+		print('matching files: {}/{} ({}%)'.format(count, total, 100*count/total))
 	
 	# Display all available keys
 	if args.keys:
