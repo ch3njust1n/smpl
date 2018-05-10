@@ -158,17 +158,16 @@ class ParameterChannel(object):
             msg = self.format_msg(msg)
 
             try:
-                ok_read, ok_write, error = select.select([sock,], [sock,], [], 5)
-            except select.error:
-                sock.shutdown(2)
-                sock.close()
-                self.reconnect((host, port))
-                sock = self.connections[addr]
-
-            sock.sendall(msg)
-            
-            # Look for the response
-            resp = sock.recv(4096).split('::')
+                sock.sendall(msg)
+                resp = sock.recv(4096).split('::')
+            except socket.error, e:
+                if e.errno == errno.ECONNRESET:
+                    sock.shutdown(2)
+                    sock.close()
+                    self.reconnect((host, port))
+                else:
+                    self.log.exception(e)
+                    raise Exception(e)
 
             if 'invalid' in resp:
                 self.log.debug('invalid addr: {}, msg: {}'.format(addr, msg))

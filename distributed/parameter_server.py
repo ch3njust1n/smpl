@@ -278,6 +278,7 @@ class ParameterServer(object):
                 sleep(random())
                 Process(target=self.__train_hyperedge).start()
                 self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
+                self.log.debug('num logs: {}'.format(len([name for name in os.listdir(self.log_dir) if name.endswith('.log')])))
                 # break
             else:
                 # self.log.debug('here3')
@@ -370,6 +371,7 @@ class ParameterServer(object):
 
         # clean up parameter cache and gradient queue
         if not self.dev:
+            log.debug('deleting {}'.format(sess_id))
             self.cache.delete(sess_id)
 
         # increment total successful training epoches and hyperedges
@@ -611,11 +613,14 @@ class ParameterServer(object):
                 args=(send_to['host'], send_to['port'],
                       {"api": "synchronize_parameters", "args": args},)).start()
 
-        # save parameters so can calculate difference (gradient) after training
-        self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
-                                            "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
-                                            "log": log_path, "share_count": 0, "gradients": [], 
-                                            "share_train_sizes": 0, "train_batches": 0, "val_batches": 0}))
+        try:
+            # save parameters so can calculate difference (gradient) after training
+            self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
+                                                "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
+                                                "log": log_path, "share_count": 0, "gradients": [], 
+                                                "share_train_sizes": 0, "train_batches": 0, "val_batches": 0}))
+        except IndexError as e:
+            log.exception(e)
 
         if not self.cache.exists(sess_id):
             log.error('Error: key insertion failure {}'.format(sess_id))
@@ -748,7 +753,8 @@ class ParameterServer(object):
     '''
     def __establish_session(self, sess_id):
         # Setup logging for hyperedge
-        log, log_path = utils.log(self.log_dir, '{}-{}'.format(self.me['id'], sess_id))
+        log_name = '{}-{}'.format(self.me['id'], sess_id)
+        log, log_path = utils.log(self.log_dir, log_name)
         log.info('api:establish_session')
 
         while not self.edge_lock.acquire(False):
@@ -757,10 +763,7 @@ class ParameterServer(object):
         if int(self.cache.get('curr_edges')) == self.regular:
             log.info('maxed hyperedges')
             self.edge_lock.release()
-            # remove log
-            log_path = os.path.join(self.log_dir, '{}.log'.format(sess_id))
-            if os.path.isfile(log_path):
-                os.remove(log_path)
+            os.remove(log_path)
 
             return {}
         else:
