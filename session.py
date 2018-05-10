@@ -37,7 +37,7 @@ def size(sess):
 Aggregate logs from peers
 '''
 def pull_logs():
-	os.system('chmod +x pull.sh')
+	os.system('chmod +x ./logs/pull.sh')
 	log_dir = os.path.join(os.getcwd(), 'logs', 'pull.sh')
 	subprocess.call(log_dir, shell=True)
 
