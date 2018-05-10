@@ -72,7 +72,8 @@ class ParameterServer(object):
         self.me = utils.get_me(self.peers, eth=self.eth)
 
         # For testing only so that we can see a difference in the parameters across peers
-        self.seed = self.me['id']
+        if self.dev:
+            self.seed = self.me['id']
 
         # Clear previous logs
         self.log_dir = os.path.join(os.getcwd(), 'logs')
@@ -391,7 +392,6 @@ class ParameterServer(object):
     def __local_train(self, sess_id, nn, log=None):
         # DistributedTrainer constructor parameters
         # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
-        self.seed=18
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         processes = []
 
