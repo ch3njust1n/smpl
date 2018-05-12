@@ -56,7 +56,7 @@ class ParameterServer(object):
         self.__clear_port()
 
         # Locks
-        # self.count_lock = Lock()
+        self.count_lock = Lock()
 
         # Get data
         Thread(target=self.__load_data).start()
@@ -270,20 +270,19 @@ class ParameterServer(object):
     '''
     def __async_train(self):
         while 1:
-            # self.count_lock.acquire(False)
+            sleep(random())
+            self.count_lock.acquire(False)
             if int(self.cache.get('hyperedges')) >= self.hyperepochs:
-                # self.count_lock.release()
+                self.count_lock.release()
                 break
             elif int(self.cache.get('curr_edges')) < self.regular:
-                sleep(random())
                 Process(target=self.__train_hyperedge).start()
                 self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-                # self.count_lock.release()
+                self.count_lock.release()
                 self.log.debug('num logs: {}'.format(len([name for name in os.listdir(self.log_dir) if name.endswith('.log')])))
             else:
-                # self.count_lock.release()
-                sleep(random())
-        self.log.info('Hypergraph Training Complete')
+                self.count_lock.release()
+        self.log.info('HDSGD COMPLETE')
 
 
     '''
@@ -383,10 +382,10 @@ class ParameterServer(object):
             self.cache.delete(sess_id)
 
         # increment total successful training epoches and hyperedges
-        # self.count_lock.acquire(False)
+        self.count_lock.acquire(False)
         self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
         self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
-        # self.count_lock.release()
+        self.count_lock.release()
 
         log.info('hyperedge training complete')
 
@@ -561,9 +560,9 @@ class ParameterServer(object):
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
-        # self.count_lock.acquire(False)
+        self.count_lock.acquire(False)
         self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-        # self.count_lock.release()
+        self.count_lock.release()
 
         return ok
 
@@ -782,18 +781,18 @@ class ParameterServer(object):
         log, log_path = utils.log(self.log_dir, log_name)
         log.info('api:establish_session')
 
-        # self.count_lock.acquire(False)
+        self.count_lock.acquire(False)
 
-        if int(self.cache.get('curr_edges')) == self.regular:
+        if int(self.cache.get('curr_edges')) >= self.regular:
             log.info('maxed hyperedges')
-            # self.count_lock.release()
+            self.count_lock.release()
             os.remove(log_path)
 
             return {}
         else:
             # Increment hyperedge count
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-            # self.count_lock.release()
+            self.count_lock.release()
 
             record = ujson.loads(self.cache.get('best'))
             

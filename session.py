@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 	Justin Chen
 	session.py
@@ -11,125 +12,156 @@ from __future__ import division
 import redis, ujson, argparse, sys, os, subprocess
 from pprint import pprint
 
+class ToolBox(object):
+	def __init__(self, args):
+		self.cache = redis.StrictRedis(host=args.host, port=args.port, db=args.db)
 
-def get_object(var, cache):
-	if not cache.exists(var):
-		return 'key dne: {}'.format(var)
-	else:
-		return ujson.loads(cache.get(var))
+	def get_object(self, var):
+		if not self.cache.exists(var):
+			return 'key dne: {}'.format(var)
+		else:
+			return ujson.loads(self.cache.get(var))
 
-'''
-Clear all logs
-'''
-def clear(log_dir):
-	for file in os.listdir(log_dir):
-		if file.endswith('.log'): os.remove(os.path.join(log_dir, file))
-
-
-'''
-Display session object memory size
-'''
-def size(sess):
-	print('{} (bytes)'.format(sys.getsizeof(sess)))
+	'''
+	Clear all logs
+	'''
+	def clear(self, log_dir):
+		for file in os.listdir(log_dir):
+			if file.endswith('.log'): os.remove(os.path.join(log_dir, file))
 
 
-'''
-Print files
-
-Input: files (list) List of files
-'''
-def print_files(files, title='files'):
-	# Print incomplete hyperedges
-	print '\n-----------\n{}:'.format(title)
-	for i in files:
-		print i
-	print '-----------'
+	'''
+	Display session object memory size
+	'''
+	def size(self, sess):
+		print('{} (bytes)'.format(sys.getsizeof(sess)))
 
 
-'''
-Aggregate logs from peers
-'''
-def pull_logs():
-	os.system('chmod +x ./logs/pull.sh')
-	log_dir = os.path.join(os.getcwd(), 'logs', 'pull.sh')
-	subprocess.call(log_dir, shell=True)
+	'''
+	Print files
+
+	Input: files (list) List of files
+	'''
+	def print_files(self, files, title='files'):
+		# Print incomplete hyperedges
+		div = '-'*(len(title)+1)
+		print '\n{}\n{}:\n{}'.format(div, title, div)
+		for i in files:
+			if isinstance(i,tuple):
+				print '{}\n⤷{}\n'.format(*i)
+			else:
+				print i
 
 
-'''
-Return all log files
-
-Input:  log_dir (string) Path to directory containing logs
-Output: logs    (list)   List of all log files
-'''
-def get_logs(log_dir):
-	return [os.path.join(log_dir, file) for file in os.listdir(log_dir) if file.endswith('.log')]
-
-
-'''
-Find all files containing given term
-
-Input:  paths (list) List of file paths
-	    match (bool) If True, return list of files containing term
-	    			 Default: False
-Output: count (int)  Number of files containing term
-        files (list) List of file paths
-'''
-def grep_all(term, paths, match=True):
-	files = []
-	count = 0
-
-	for log in paths:
-		with open(log, 'r') as f:
-			log = log.split('/')[-1]
-
-			if term in f.read():
-				count += 1
-				if match:
-					files.append(log)
-			elif not match:
-				files.append(log)
-
-	return count, files
+	'''
+	Aggregate logs from peers
+	'''
+	def pull_logs(self):
+		os.system('chmod +x ./logs/pull.sh')
+		log_dir = os.path.join(os.getcwd(), 'logs', 'pull.sh')
+		subprocess.call(log_dir, shell=True)
 
 
-'''
-Check if all the sessions completed training
-'''
-def check_logs(log_dir):
-	pull_logs()
+	'''
+	Return all log files
 
-	while len(os.listdir(log_dir)) == 0:
-		sleep(0.5)
-
-	all_logs = [l for l in get_logs(log_dir) if 'ps' not in l]
-	total = len(all_logs)
-	complete, incomplete = grep_all('hyperedge training complete', all_logs, match=False)
-
-	print_files(incomplete, 'incomplete')
-
-	print('completed hyperedges: {}/{} ({}%)'.format(complete, total, 100*complete/total))
+	Input:  log_dir (string) Path to directory containing logs
+	Output: logs    (list)   List of all log files
+	'''
+	def get_logs(self, log_dir):
+		return [os.path.join(log_dir, file) for file in os.listdir(log_dir) if file.endswith('.log')]
 
 
-'''
-Query session objects
-'''
-def query(sess, args):
-	result = sess
-	if args.property != None:
-		result = 'key:{}, value: {}'.format(args.property, sess[args.property])
-	elif args.properties:
-		result = 'properties: {}'.format(list(sess.keys()))
-	elif args.ignore != None:
-		for k in args.ignore:
-			if k in sess:
-				del sess[k]
+	'''
+	Find all files containing given term
+
+	Input:  paths (list) List of file paths
+		    match (bool) If True, return list of files containing term
+		    			 Default: False
+	Output: count (int)  Number of files containing term
+	        files (list) List of file paths
+	'''
+	def grep_all(self, term, paths, match=True, bugs=False):
+		files = []
+		count = 0
+
+		for log in paths:
+			with open(log, 'rb') as f:
+				log = log.split('/')[-1]
+
+				if term in f.read():
+					count += 1
+					if match:
+						files.append(log)
+				elif not match:
+					if bugs:
+						# Get last function call in file
+						f.seek(-2, os.SEEK_END)
+						while f.read(1) != b"\n":
+							f.seek(-2, os.SEEK_CUR)
+						last = [s for s in f.readline().split(' ') if len(s) > 0]
+						last.pop(1)
+						last = '  '.join(last[:2])
+
+						files.append((log, last))
+					else:
+						files.append(log)
+
+		return count, files
+
+
+	'''
+	Check if all the sessions completed training
+	'''
+	def check_logs(self, log_dir):
+		self.pull_logs()
+
+		while len(os.listdir(log_dir)) == 0:
+			sleep(0.5)
+
+		all_logs = []
+		ps_logs = []
+		for l in self.get_logs(log_dir):
+			if 'ps' not in l:
+				all_logs.append(l)
+			else:
+				ps_logs.append(l)
+
+		total = len(all_logs)
+		complete, incomplete = self.grep_all('hyperedge training complete', all_logs, match=False, bugs=True)
+		self.print_files(incomplete, 'incomplete hyperedges')
+		print('completed hyperedges: {}/{} ({}%)'.format(complete, total, 100*complete/total))
+
+		total = len(ps_logs)
+		complete, incomplete = self.grep_all('HDSGD COMPLETE', ps_logs, match=False)
+		self.print_files(incomplete, 'incomplete peers')
+		print('completed training: {}/{} ({}%)'.format(complete, total, 100*complete/total))
+
+		var = ['current edges:   {}'.format(self.get_object('curr_edges')),
+		       'hyperedge count: {}'.format(self.get_object('hyperedges'))]
+		self.print_files(var, 'variables')
+
+
+	'''
+	Query session objects
+	'''
+	def query(sess, args):
 		result = sess
-	elif args.minimal:
-		for k in ['parameters', 'gradients', 'multistep']:
-			if k in sess:
-				del sess[k]
-		result = sess
-	pprint(result)
+		if args.property != None:
+			result = 'key:{}, value: {}'.format(args.property, sess[args.property])
+		elif args.properties:
+			result = 'properties: {}'.format(list(sess.keys()))
+		elif args.ignore != None:
+			for k in args.ignore:
+				if k in sess:
+					del sess[k]
+			result = sess
+		elif args.minimal:
+			for k in ['parameters', 'gradients', 'multistep']:
+				if k in sess:
+					del sess[k]
+			result = sess
+		pprint(result)
 
 
 def main():
@@ -151,19 +183,19 @@ def main():
 	parser.add_argument('--variable', '-v', type=str, help='Retrieve state variable. If using this, do not set --sess')
 	args = parser.parse_args()
 
-	cache = redis.StrictRedis(host=args.host, port=args.port, db=args.db)
+	tb = ToolBox(args)
 
 	# Clear logs
 	if args.clear:
-		clear(args.log_dir)
+		tb.clear(args.log_dir)
 
 	if args.check:
-		check_logs(args.log_dir)
+		tb.check_logs(args.log_dir)
 
 	if args.grep != None:
-		all_logs = get_logs(args.log_dir)
+		all_logs = tb.get_logs(args.log_dir)
 		total = len(all_logs)
-		count, files = grep_all(args.grep, all_logs)
+		count, files = tb.grep_all(args.grep, all_logs)
 		print_files(files, 'matching files')
 		print('matching files: {}/{} ({}%)'.format(count, total, 100*count/total))
 	
@@ -173,17 +205,17 @@ def main():
 
 	sess = ''
 	if args.sess != None:
-		sess = get_object(args.sess, cache)
+		sess = tb.get_object(args.sess)
 		if len(sess) > 0:
 			# Return size of session object
 			if args.size:
-				size(sess)
+				tb.size(sess)
 
 			# Query session objects and variables
-			query(sess, args)
+			tb.query(sess, args)
 
 	elif args.variable != None:
-		print get_object(args.variable, cache)
+		print tb.get_object(args.variable)
 
 
 if __name__ == '__main__':
