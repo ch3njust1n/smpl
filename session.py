@@ -137,9 +137,12 @@ class ToolBox(object):
 		self.print_files(incomplete, 'incomplete peers')
 		print('completed training: {}/{} ({}%)'.format(complete, total, 100*complete/total))
 
-		var = ['current edges:   {}'.format(self.get_object('curr_edges')),
-		       'hyperedge count: {}'.format(self.get_object('hyperedges'))]
-		self.print_files(var, 'variables')
+		self.print_files(self.get_edges(), 'variables')
+
+
+	def get_edges(self):
+		return ['current edges:   {}'.format(self.get_object('curr_edges')),
+		        'hyperedge count: {}'.format(self.get_object('hyperedges'))]
 
 
 	'''
@@ -171,6 +174,7 @@ def main():
 	parser.add_argument('--check', '-ch', action='store_true', help='Check that all hyperedges completed training')
 	parser.add_argument('--clear', action='store_true', help='Clear all logs')
 	parser.add_argument('--db', type=int, default=0, help='Redis db')
+	parser.add_argument('--edges', '-e', action='store_true', help='Display edge count')
 	parser.add_argument('--grep', '-g', type=str, help='Grep all files for given term')
 	parser.add_argument('--ignore', '-i', type=str, nargs='+', help='Ignores a particular key/value in the session object')
 	parser.add_argument('--keys', '-k', action='store_true', help='Get all Redis keys')
@@ -191,6 +195,9 @@ def main():
 
 	if args.check:
 		tb.check_logs(args.log_dir)
+
+	if args.edges:
+		tb.print_files(tb.get_edges(), 'variables')
 
 	if args.grep != None:
 		all_logs = tb.get_logs(args.log_dir)
