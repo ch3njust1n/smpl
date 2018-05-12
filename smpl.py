@@ -38,8 +38,8 @@ def main():
     parser.add_argument('--eth', type=str, default='ens3', help='Peers\' ethernet interface (default: ens3)')
     parser.add_argument('--flush', '-f', type=str2bool, default=True, help='Clear all parameters from previous \
                         sessions')
-    parser.add_argument('--hyperepochs', '-e', type=int, default=10, help='Total number of hyperepochs \
-                        across all cliques for this peer (default: 10)')
+    parser.add_argument('--hyperepochs', '-e', type=int, default=5, help='Total number of hyperepochs \
+                        across all cliques for this peer (default: 5)')
     parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
     parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate e.g i = 10^(-i)')

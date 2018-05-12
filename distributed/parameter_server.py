@@ -56,8 +56,7 @@ class ParameterServer(object):
         self.__clear_port()
 
         # Locks
-        self.edge_lock = Lock()
-        self.count_lock = Lock()
+        # self.count_lock = Lock()
 
         # Get data
         Thread(target=self.__load_data).start()
@@ -271,14 +270,18 @@ class ParameterServer(object):
     '''
     def __async_train(self):
         while 1:
+            # self.count_lock.acquire(False)
             if int(self.cache.get('hyperedges')) >= self.hyperepochs:
+                # self.count_lock.release()
                 break
             elif int(self.cache.get('curr_edges')) < self.regular:
                 sleep(random())
                 Process(target=self.__train_hyperedge).start()
                 self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
+                # self.count_lock.release()
                 self.log.debug('num logs: {}'.format(len([name for name in os.listdir(self.log_dir) if name.endswith('.log')])))
             else:
+                # self.count_lock.release()
                 sleep(random())
         self.log.info('Hypergraph Training Complete')
 
@@ -296,6 +299,10 @@ class ParameterServer(object):
 
         # establish clique
         while len(sess_id) == 0:
+            if int(self.cache.get('hyperedges')) == self.hyperepochs:
+                os.remove(log_path)
+                return
+
             sess_id = self.__init_session(log=log, log_path=log_path)
             sleep(random())
         log.info('session id: {}'.format(sess_id))
@@ -376,11 +383,10 @@ class ParameterServer(object):
             self.cache.delete(sess_id)
 
         # increment total successful training epoches and hyperedges
-        self.count_lock.acquire()
+        # self.count_lock.acquire(False)
         self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
-        self.count_lock.release()
-
         self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
+        # self.count_lock.release()
 
         log.info('hyperedge training complete')
 
@@ -555,7 +561,9 @@ class ParameterServer(object):
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
+        # self.count_lock.acquire(False)
         self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
+        # self.count_lock.release()
 
         return ok
 
@@ -592,6 +600,9 @@ class ParameterServer(object):
 
         if best['alias'] != sess['me']['alias']:
             ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
+
+            if len(model) == 0:
+                return ''
 
             args = [sess_id, best, peers[:], self.me]
         else:
@@ -753,6 +764,8 @@ class ParameterServer(object):
             if len(peers) >= self.uniform:
                 break
 
+        log.debug('peers: {}'.format(len(peers)))
+
         return peers[:self.uniform]
 
 
@@ -769,18 +782,18 @@ class ParameterServer(object):
         log, log_path = utils.log(self.log_dir, log_name)
         log.info('api:establish_session')
 
-        while not self.edge_lock.acquire(False):
-            sleep(0.1)
+        # self.count_lock.acquire(False)
 
         if int(self.cache.get('curr_edges')) == self.regular:
             log.info('maxed hyperedges')
-            self.edge_lock.release()
+            # self.count_lock.release()
             os.remove(log_path)
 
             return {}
         else:
             # Increment hyperedge count
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
+            # self.count_lock.release()
 
             record = ujson.loads(self.cache.get('best'))
             
@@ -790,8 +803,6 @@ class ParameterServer(object):
             self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path,
                                                  "share_train_sizes": 0, "share_count": 0, 
                                                  "gradients": [], "done": False}))
-            self.edge_lock.release()
-        
             return me
 
 
