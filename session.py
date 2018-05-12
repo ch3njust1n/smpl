@@ -62,7 +62,7 @@ Input:  log_dir (string) Path to directory containing logs
 Output: logs    (list)   List of all log files
 '''
 def get_logs(log_dir):
-	return [os.path.join(log_dir, file) for file in os.listdir(log_dir) if file.endswith('.log') and 'ps' not in file]
+	return [os.path.join(log_dir, file) for file in os.listdir(log_dir) if file.endswith('.log')]
 
 
 '''
@@ -101,7 +101,7 @@ def check_logs(log_dir):
 	while len(os.listdir(log_dir)) == 0:
 		sleep(0.5)
 
-	all_logs = get_logs(log_dir)
+	all_logs = [l for l in get_logs(log_dir) if 'ps' not in l]
 	total = len(all_logs)
 	complete, incomplete = grep_all('hyperedge training complete', all_logs, match=False)
 
@@ -125,7 +125,7 @@ def query(sess, args):
 				del sess[k]
 		result = sess
 	elif args.minimal:
-		for k in ['parameters', 'gradients']:
+		for k in ['parameters', 'gradients', 'multistep']:
 			if k in sess:
 				del sess[k]
 		result = sess
@@ -174,16 +174,16 @@ def main():
 	sess = ''
 	if args.sess != None:
 		sess = get_object(args.sess, cache)
+		if len(sess) > 0:
+			# Return size of session object
+			if args.size:
+				size(sess)
+
+			# Query session objects and variables
+			query(sess, args)
+
 	elif args.variable != None:
-		sess = get_object(args.variable, cache)
-
-	if len(sess) > 0:
-		# Return size of session object
-		if args.size:
-			size(sess)
-
-		# Query session objects and variables
-		query(sess, args)
+		print get_object(args.variable, cache)
 
 
 if __name__ == '__main__':

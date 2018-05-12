@@ -305,7 +305,7 @@ class ParameterServer(object):
         sess["log"] = log_path
         self.cache.set(sess_id, ujson.dumps(sess))
 
-        sess = self.__train(sess_id, log)
+        self.__train(sess_id, log)
 
 
     '''
