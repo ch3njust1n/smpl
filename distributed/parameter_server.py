@@ -595,6 +595,8 @@ class ParameterServer(object):
         if best['alias'] != sess['me']['alias']:
             ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
 
+            if not ok or len(model) == 0: return ''
+
             args = [sess_id, best, peers[:], self.me]
         else:
             model = ujson.loads(self.cache.get('best'))
