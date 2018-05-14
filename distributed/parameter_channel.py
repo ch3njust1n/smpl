@@ -206,6 +206,10 @@ class ParameterChannel(object):
                     return False, ''
 
                 content = ujson.loads(content)
+
+                if content == None:
+                    return False, ''
+
             else:
                 self.log.error('empty reply from {} for api:{}'.format(addr, msg))
                 content = ''

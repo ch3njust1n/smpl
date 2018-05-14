@@ -56,7 +56,6 @@ class ParameterServer(object):
         self.__clear_port()
 
         # Locks
-        self.edge_lock = Lock()
         self.count_lock = Lock()
 
         # Get data
@@ -271,16 +270,19 @@ class ParameterServer(object):
     '''
     def __async_train(self):
         while 1:
+            sleep(random())
+            self.count_lock.acquire(False)
             if int(self.cache.get('hyperedges')) >= self.hyperepochs:
+                self.count_lock.release()
                 break
             elif int(self.cache.get('curr_edges')) < self.regular:
-                sleep(random())
                 Process(target=self.__train_hyperedge).start()
                 self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
+                self.count_lock.release()
                 self.log.debug('num logs: {}'.format(len([name for name in os.listdir(self.log_dir) if name.endswith('.log')])))
             else:
-                sleep(random())
-        self.log.info('Hypergraph Training Complete')
+                self.count_lock.release()
+        self.log.info('HDSGD COMPLETE')
 
 
     '''
@@ -296,6 +298,10 @@ class ParameterServer(object):
 
         # establish clique
         while len(sess_id) == 0:
+            if int(self.cache.get('hyperedges')) == self.hyperepochs:
+                os.remove(log_path)
+                return
+
             sess_id = self.__init_session(log=log, log_path=log_path)
             sleep(random())
         log.info('session id: {}'.format(sess_id))
@@ -305,7 +311,7 @@ class ParameterServer(object):
         sess["log"] = log_path
         self.cache.set(sess_id, ujson.dumps(sess))
 
-        sess = self.__train(sess_id, log)
+        self.__train(sess_id, log)
 
 
     '''
@@ -359,6 +365,12 @@ class ParameterServer(object):
 
 
     '''
+    Update the best model on this parameter server, remove finished sessions from cache, 
+    and update variable counters
+
+    Input: sess_id (string)           Session id
+           sess    (dict)             Session object
+           log     (Logger, optional) Session log
     '''
     def cleanup(self, sess_id, sess, log=None):
         # compare recently trained hyperedge model with current best
@@ -370,13 +382,10 @@ class ParameterServer(object):
             self.cache.delete(sess_id)
 
         # increment total successful training epoches and hyperedges
-        self.count_lock.acquire()
+        self.count_lock.acquire(False)
         self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
-        self.count_lock.release()
-
-        # self.edge_lock.acquire()
         self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
-        # self.edge_lock.release()
+        self.count_lock.release()
 
         log.info('hyperedge training complete')
 
@@ -384,10 +393,10 @@ class ParameterServer(object):
     '''
     Function for initiating local training
 
-    Input:  sess_id (string)
-            nn      (nn.Module)
-            log     (Logger)
-    Output: share   (dict)      Dictionary containing accuracy, validation size, and training size
+    Input:  sess_id (string)           Session id
+            nn      (nn.Module)        Neural network
+            log     (Logger, optional) Session log
+    Output: share   (dict)             Dictionary containing accuracy, validation size, and training size
     '''
     def __local_train(self, sess_id, nn, log=None):
         # DistributedTrainer constructor parameters
@@ -435,20 +444,13 @@ class ParameterServer(object):
             log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
             Thread(target=self.pc.send, 
                    args=(send_to['host'], send_to['port'], 
-                         {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
+                         {"api": "share_grad", "args": [sess_id, self.me['alias'], hash(str(gradients)), gradients, sample_size]})).start()
 
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
         while 1:
             sess = ujson.loads(self.cache.get(sess_id))
             share_count = sess['share_count']
-            # party = list(sess['party'])
-
-            # for p, peer in enumerate(party):
-            #     if not self.pc.alive(peer['host'], peer['port']):
-            #         sess['party'].pop(p)
-
-            # self.cache.set(sess_id, ujson.dumps(sess))
 
             if int(share_count) == len(sess['party']): break
             if int(share_count) > len(sess['party']):
@@ -469,7 +471,7 @@ class ParameterServer(object):
              samples   (int)  Number of samples sending peer used to generate given gradients
     Output:  ok        (bool) Bool indicating that session exists and values were updated
     '''
-    def __share_grad(self, sess_id, sender, gradients, samples):
+    def __share_grad(self, sess_id, sender, gradient_hash, gradients, samples):
         if not self.cache.exists(sess_id):
             print 'sessDNE sess_id: {}'.format(sess_id)
             return False
@@ -481,6 +483,9 @@ class ParameterServer(object):
             log_name = sess["log"]
             logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             log = logging.getLogger()
+
+            if gradient_hash != hash(str(gradients)):
+                log.error('gradient hash incorrect')
 
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
@@ -555,9 +560,9 @@ class ParameterServer(object):
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
-        # self.edge_lock.acquire()
+        self.count_lock.acquire(False)
         self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-        # self.edge_lock.release()
+        self.count_lock.release()
 
         return ok
 
@@ -595,7 +600,8 @@ class ParameterServer(object):
         if best['alias'] != sess['me']['alias']:
             ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
 
-            if not ok or len(model) == 0: return ''
+            if len(model) == 0:
+                return ''
 
             args = [sess_id, best, peers[:], self.me]
         else:
@@ -757,6 +763,8 @@ class ParameterServer(object):
             if len(peers) >= self.uniform:
                 break
 
+        log.debug('peers: {}'.format(len(peers)))
+
         return peers[:self.uniform]
 
 
@@ -773,20 +781,18 @@ class ParameterServer(object):
         log, log_path = utils.log(self.log_dir, log_name)
         log.info('api:establish_session')
 
-        while not self.edge_lock.acquire(False):
-            sleep(0.1)
+        self.count_lock.acquire(False)
 
-        if int(self.cache.get('curr_edges')) == self.regular:
+        if int(self.cache.get('curr_edges')) >= self.regular:
             log.info('maxed hyperedges')
-            self.edge_lock.release()
+            self.count_lock.release()
             os.remove(log_path)
 
             return {}
         else:
             # Increment hyperedge count
-            # self.edge_lock.acquire()
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-            # self.edge_lock.release()
+            self.count_lock.release()
 
             record = ujson.loads(self.cache.get('best'))
             
@@ -796,8 +802,6 @@ class ParameterServer(object):
             self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path,
                                                  "share_train_sizes": 0, "share_count": 0, 
                                                  "gradients": [], "done": False}))
-            self.edge_lock.release()
-        
             return me
 
 

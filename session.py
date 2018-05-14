@@ -128,6 +128,7 @@ class ToolBox(object):
 				ps_logs.append(l)
 
 		total = len(all_logs)
+
 		if total > 0:
 			complete, incomplete = self.grep_all('hyperedge training complete', all_logs, match=False, bugs=True)
 			self.print_files(incomplete, 'incomplete hyperedges')
