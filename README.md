@@ -4,26 +4,20 @@
 Hyper-parallel distributed training for deep neural networks
 
 
-#### Requirements
-
-- Install PyTorch ([pytorch.org](http://pytorch.org))
-- `pip install -r requirements.txt`
-- `sudo apt install libgl1-mesa-glx`
-
 #### System Configuration
 
  - Be sure to set the correct IP address for all party members before running.
  - Check IPs in `server.txt`
 
 
-#### Single Node Setup
+#### Single Node Requirements Setup
 ```bash
 Redis Setup
 cd smpl/redis_setup
 bash setup.sh
 bash install.sh
 
-Make smpl.py executable on all peers
+The setup script should do this, but make smpl.py executable on all peers
 chmod +x smpl.py
 
 Check that `which python` matches the first line of `smpl.py`
@@ -34,7 +28,14 @@ bash start.sh
 Run `bash start.sh` from one of the nodes
 ```
 
-#### Cluster Setup
+#### Redis Server
+````
+If getting Could not connect to Redis at 127.0.0.1:6379: Connection refused enter the following on the appropriate node
+
+redis-server --daemonize yes
+````
+
+#### Cluster Startup
 ```bash
 bash sendall.sh
 cd smpl

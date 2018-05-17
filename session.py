@@ -16,11 +16,21 @@ class ToolBox(object):
 	def __init__(self, args):
 		self.cache = redis.StrictRedis(host=args.host, port=args.port, db=args.db)
 
+
+	'''
+	'''
+	def keys(self):
+		pprint('keys: {}'.format([key for key in self.cache.scan_iter("*")]))
+
+
+	'''
+	'''
 	def get_object(self, var):
 		if not self.cache.exists(var):
 			return 'key dne: {}'.format(var)
 		else:
 			return ujson.loads(self.cache.get(var))
+
 
 	'''
 	Clear all logs
@@ -76,13 +86,12 @@ class ToolBox(object):
 	Find all files containing given term
 
 	Input:  paths (list) List of file paths
-		    match (bool) If True, return list of files containing term
-		    			 Default: False
+		    debug (bool) Set to True to grab last function call in logs
 	Output: count (int)  Number of files containing term
 	        files (list) List of file paths
 	'''
-	def grep_all(self, term, paths, match=True, bugs=False):
-		files = []
+	def grep_all(self, term, paths, debug=False):
+		files = {'match': [], 'mismatch': []}
 		count = 0
 
 		for log in paths:
@@ -91,30 +100,36 @@ class ToolBox(object):
 
 				if term in f.read():
 					count += 1
-					if match:
-						files.append(log)
-				elif not match:
-					if bugs:
+					files['match'].append(log)
+				else:
+					if debug:
 						# Get last function call in file
 						f.seek(-2, os.SEEK_END)
-						while f.read(1) != b"\n":
-							f.seek(-2, os.SEEK_CUR)
-						last = [s for s in f.readline().split(' ') if len(s) > 0]
-						last.pop(1)
-						last = '  '.join(last[:2])
+						try:
+							while f.read(1) != b"\n":
+								f.seek(-2, os.SEEK_CUR)
+							last = [s for s in f.readline().split(' ') if len(s) > 0]
+							last.pop(1)
+							last = '  '.join(last[:2])
 
-						files.append((log, last))
+							files['mismatch'].append((log, last))
+						except IOError as e:
+							print 'IOError: {}'.format(log)
 					else:
-						files.append(log)
+						files['mismatch'].append(log)
 
 		return count, files
 
 
 	'''
 	Check if all the sessions completed training
+
+	Input: log_dir (string) Path to log directory
+		   pull    (bool)   True if should pull logs
 	'''
-	def check_logs(self, log_dir):
-		self.pull_logs()
+	def check_logs(self, log_dir, pull=False):
+		if pull:
+			self.pull_logs()
 
 		while len(os.listdir(log_dir)) == 0:
 			sleep(0.5)
@@ -130,13 +145,14 @@ class ToolBox(object):
 		total = len(all_logs)
 
 		if total > 0:
-			complete, incomplete = self.grep_all('hyperedge training complete', all_logs, match=False, bugs=True)
-			self.print_files(incomplete, 'incomplete hyperedges')
+			complete, files = self.grep_all('hyperedge complete', all_logs, debug=True)
+			self.print_files(files['mismatch'], 'incomplete hyperedges')
+			self.print_files(files['match'], 'completed')
 			print('completed hyperedges: {}/{} ({}%)'.format(complete, total, 100*complete/total))
 
 			total = len(ps_logs)
-			complete, incomplete = self.grep_all('Hypergraph Training Complete', ps_logs, match=False)
-			self.print_files(incomplete, 'incomplete peers')
+			complete, files = self.grep_all('Hypergraph Complete', ps_logs)
+			self.print_files(files['mismatch'], 'incomplete peers')
 			print('completed training: {}/{} ({}%)'.format(complete, total, 100*complete/total))
 
 			self.print_files(self.get_edges(), 'variables')
@@ -152,7 +168,7 @@ class ToolBox(object):
 	'''
 	Query session objects
 	'''
-	def query(sess, args):
+	def query(self, sess, args):
 		result = sess
 		if args.property != None:
 			result = 'key:{}, value: {}'.format(args.property, sess[args.property])
@@ -188,6 +204,7 @@ def main():
 	parser.add_argument('--size', '-z', action='store_true', help='Get size of cache object')
 	parser.add_argument('--property', '-p', type=str, help='Session object property')
 	parser.add_argument('--properties', '-ps', action='store_true', help='Get all properties of object')
+	parser.add_argument('--pull', '-pl', action='store_true', help='Pull logs')
 	parser.add_argument('--variable', '-v', type=str, help='Retrieve state variable. If using this, do not set --sess')
 	args = parser.parse_args()
 
@@ -198,7 +215,7 @@ def main():
 		tb.clear(args.log_dir)
 
 	if args.check:
-		tb.check_logs(args.log_dir)
+		tb.check_logs(args.log_dir, pull=args.pull)
 
 	if args.edges:
 		tb.print_files(tb.get_edges(), 'variables')
@@ -212,7 +229,7 @@ def main():
 	
 	# Display all available keys
 	if args.keys:
-		pprint('keys: {}'.format([key for key in cache.scan_iter("*")]))
+		tb.keys()
 
 	sess = ''
 	if args.sess != None:
