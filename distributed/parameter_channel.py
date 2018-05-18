@@ -167,7 +167,9 @@ class ParameterChannel(object):
                     self.reconnect((host, port))
                 else:
                     self.log.exception(e)
-                    raise Exception(e)
+                    # raise Exception(e)
+                    del self.connections[addr]
+                    return False, ''
 
             if 'invalid' in resp:
                 self.log.debug('invalid addr: {}, msg: {}'.format(addr, msg))

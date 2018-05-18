@@ -46,7 +46,7 @@ def main():
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file.')
-    parser.add_argument('--regular', '-r', default=1, help='Maximum number of simultaneous hyperedges at \
+    parser.add_argument('--regular', '-r', default=2, help='Maximum number of simultaneous hyperedges at \
                         any given time (default: 1)')
     parser.add_argument('--save', '-s', type=str, default='model/save', 
                         help='Directory to save trained model parameters to')
@@ -55,7 +55,7 @@ def main():
     parser.add_argument('--sparsity', type=percent, default=0.5, help='Parameter sharing sparsification level (default: 0.0)')
     parser.add_argument('--uniform', '-u', type=edge_size, default=2, help='Hyperedge size (default: 2)')
     parser.add_argument('--variety', type=int, default=1, 
-                        help='Minimum number of new members required in order to enter into a new clique. \
+                        help='Minimum number of new members required in order to enter into a new hyperedge. \
                         Prevents perfectly overlapping with current sessions.')
     args = parser.parse_args()
 

@@ -12,7 +12,7 @@ from parameter_channel import ParameterChannel
 from multiprocessing import Process, Lock, Manager, cpu_count, Value
 from multiprocessing.managers import BaseManager
 from threading import Thread
-from random import random, getrandbits, shuffle, randint
+from random import random, getrandbits, shuffle, randint, uniform
 from time import sleep, time
 from train import Train
 from datetime import datetime
@@ -52,6 +52,7 @@ class ParameterServer(object):
         self.shuffle        = args.shuffle
         self.sparsity       = args.sparsity
         self.uniform        = args.uniform-1
+        self.variety        = args.variety
 
         self.__clear_port()
 
@@ -261,6 +262,17 @@ class ParameterServer(object):
 
 
     '''
+    Check if peer can support starting another hyperedge
+
+    Output: (bool) True if this peer can start another hyperepoch
+    '''
+    def available(self):
+        curr_edges = int(self.cache.get('curr_edges'))
+        completed = int(self.cache.get('hyperedges'))
+        return curr_edges < self.regular and (self.hyperepochs - completed - curr_edges) > 0
+
+
+    '''
     Internal API
     Wrapper function for train(). Continue to initiate hyperedges while
     your current hyperedge count is less than the specified max. Iterating in this fashion
@@ -270,19 +282,13 @@ class ParameterServer(object):
     '''
     def __async_train(self):
         while 1:
-            sleep(random())
-            self.count_lock.acquire(False)
-            if int(self.cache.get('hyperedges')) >= self.hyperepochs:
-                self.count_lock.release()
-                break
-            elif int(self.cache.get('curr_edges')) < self.regular:
-                Process(target=self.__train_hyperedge).start()
-                self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-                self.count_lock.release()
-                self.log.debug('num logs: {}'.format(len([name for name in os.listdir(self.log_dir) if name.endswith('.log')])))
-            else:
-                self.count_lock.release()
-        self.log.info('HDSGD COMPLETE')
+            sleep(uniform(0,3))
+            with self.count_lock:
+                if int(self.cache.get('hyperedges')) >= self.hyperepochs:
+                    break
+                elif self.available(): #int(self.cache.get('curr_edges')) < self.regular:
+                    Process(target=self.__train_hyperedge).start()
+        self.log.info('Hypergraph Complete')
 
 
     '''
@@ -297,14 +303,20 @@ class ParameterServer(object):
         sess_id = ''
 
         # establish clique
-        while len(sess_id) == 0:
-            if int(self.cache.get('hyperedges')) == self.hyperepochs:
-                os.remove(log_path)
-                return
+        sess_id = self.__init_session(log=log, log_path=log_path)
 
-            sess_id = self.__init_session(log=log, log_path=log_path)
-            sleep(random())
+        if len(sess_id) == 0:
+            self.log.debug('killing session')
+            try:
+                os.remove(log_path)
+            except OSError as e:
+                self.log.debug(e)
+            return
+
         log.info('session id: {}'.format(sess_id))
+
+        with self.count_lock:
+            self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
         # Save log file path
         sess = ujson.loads(self.cache.get(sess_id))
@@ -382,12 +394,10 @@ class ParameterServer(object):
             self.cache.delete(sess_id)
 
         # increment total successful training epoches and hyperedges
-        self.count_lock.acquire(False)
-        self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
-        self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
-        self.count_lock.release()
-
-        log.info('hyperedge training complete')
+        with self.count_lock:
+            self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
+            self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
+            log.debug('hyperedge complete')
 
 
     '''
@@ -560,9 +570,9 @@ class ParameterServer(object):
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
-        self.count_lock.acquire(False)
-        self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-        self.count_lock.release()
+
+        with self.count_lock:
+            self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
         return ok
 
@@ -708,31 +718,25 @@ class ParameterServer(object):
     def get_unique_clique(self, peers, log=None):
         possible_cliques = list(combinations(peers, self.uniform))
         shuffle(possible_cliques)
-        # [({u'alias': u'smpl-1', u'host': u'192.168.0.10', u'port': 9888, u'id': 1}, 
-        #   {u'alias': u'smpl', u'host': u'192.168.0.12', u'port': 9888, u'id': 0})]
 
         clique = []
         active = self.active_sessions(log=log)
-        #  [('sess1343003545191620262', '{"peers": [], "id": "sess1343003545191620262"}')]
-
-        log.info('len(active): {}'.format(len(active)))
 
         if len(active) == 0:
             return list(possible_cliques.pop(0))
 
-        sess_hash = [hash(a) for a in active]
-
-        log.info('hash: {}'.format(sess_hash))
+        active_edges = [ujson.loads(a[1])['party'] for a in active]
+        shuffle(active_edges)
 
         # Check to ensure that overlapping cliques are not formed
         # Ensures that HDSGD forms a simple hypergraph
-        while possible_cliques:
-            clique = possible_cliques.pop(0)
-            if hash(str(clique)) not in sess_hash:
-                log.info('return hash: {}'.format(hash(str(clique))))
-                return list(clique)
-
-        log.info('clique: {}'.format(clique))
+        for possible in possible_cliques:
+            possible_set = set([str(p) for p in possible])
+            intersect_lens = [len(possible_set.intersection(set([str(e) for e in edge]))) for edge in active_edges]
+            
+            if self.uniform - max(intersect_lens) >= self.variety:
+                log.debug('possible: {}'.format(possible))
+                return list(possible)
 
         return clique
 
@@ -781,28 +785,27 @@ class ParameterServer(object):
         log, log_path = utils.log(self.log_dir, log_name)
         log.info('api:establish_session')
 
-        self.count_lock.acquire(False)
+        with self.count_lock:
 
-        if int(self.cache.get('curr_edges')) >= self.regular:
-            log.info('maxed hyperedges')
-            self.count_lock.release()
-            os.remove(log_path)
+            if not self.available(): #int(self.cache.get('curr_edges')) >= self.regular:
+                log.info('maxed hyperedges')
+                os.remove(log_path)
+                self.log.debug('removed log: {}'.format(log_name))
 
-            return {}
-        else:
-            # Increment hyperedge count
-            self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
-            self.count_lock.release()
+                return {}
+            else:
+                # Increment hyperedge count
+                self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
-            record = ujson.loads(self.cache.get('best'))
-            
-            me = dict(self.me)
-            me['accuracy'] = record['accuracy']
+                record = ujson.loads(self.cache.get('best'))
+                
+                me = dict(self.me)
+                me['accuracy'] = record['accuracy']
 
-            self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path,
-                                                 "share_train_sizes": 0, "share_count": 0, 
-                                                 "gradients": [], "done": False}))
-            return me
+                self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path,
+                                                     "share_train_sizes": 0, "share_count": 0, 
+                                                     "gradients": [], "done": False}))
+                return me
 
 
     '''
