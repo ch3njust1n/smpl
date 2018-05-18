@@ -332,7 +332,7 @@ class ParameterServer(object):
     so that each 
 
     Inputs:  sess_id (str) Session id
-             nn      (NeuralNetwork) Neural Network
+             log     (Logger, optional) Session log
     '''
     def __train(self, sess_id, log=None):
         '''
@@ -446,6 +446,7 @@ class ParameterServer(object):
             sample_size (int)  Total number of samples used to train. Required 
                                to calculate the weighted contribution of this 
                                peer's gradients
+            log         (Logger, optional) Session log
     '''
     def __allreduce(self, sess_id, sess, gradients, sample_size, log=None):
 
@@ -581,8 +582,9 @@ class ParameterServer(object):
     Internal API
     Initiates a hyperedge training session. This is only called from ps.train_hyperedge().
 
-    Output: ok      (bool)
-            sess_id (string) Session id or empty string if could not establish a session
+    Input:  log      (Logger, optional) Session log
+            log_path (string, optional) Absolute path to session log
+    Output: sess_id  (string) Session id or empty string if could not establish a session
     '''
     def __init_session(self, log=None, log_path=''):
         log.info('ps.__init_session')
@@ -650,7 +652,7 @@ class ParameterServer(object):
             session    (string) Session id with updated values
             parameters (tensor) Model parameters
             accuracy   (float)  Corresponding model accuracy
-            log        (Logger) Session log
+            log        (Logger, optional) Session log
     Output: ok         (bool)   Flag indicating if model was updated
     '''
     def update_model(self, sess_id, session='', parameters=[], accuracy=-1, log=None):
@@ -680,7 +682,7 @@ class ParameterServer(object):
     Internal API
     Get all active sessions
 
-    Input:  log   (Logger) Logger
+    Input:  log   (Logger, optional) Session log
     Output: list of tuples of sessions
     '''
     def active_sessions(self, log=None):
@@ -712,8 +714,9 @@ class ParameterServer(object):
     Check that the given session does not overlap with the currently running sessions.
     If not existing cliques exist, then this returns an empty list.
 
-    Input:  peers (list) List of dicts. See /distributed/config/party.json.
-    Output: clique (list) List of dics. 
+    Input:  peers  (list) List of dicts. See /distributed/config/party.json.
+            log    (Logger, optional) Session log
+    Output: clique (list) List of dicts. 
     '''
     def get_unique_clique(self, peers, log=None):
         possible_cliques = list(combinations(peers, self.uniform))
@@ -745,7 +748,8 @@ class ParameterServer(object):
     Internal API
     Establish a training clique
 
-    Input: sess (Session)
+    Input:  sess (Session)
+            log (Logger, optional) Session log
     Output: List of peers {alias, host, port, accuracy} to __init_session()
     '''
     def __establish_clique(self, sess, log=None):
