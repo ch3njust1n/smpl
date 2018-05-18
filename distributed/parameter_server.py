@@ -516,12 +516,12 @@ class ParameterServer(object):
     External API
     Synchronize parameters
 
-    Input:  sess_id    (str)  Unique session id
-            best       (str)  Dict representing best peer
-            peers      (list) List of dicts representing peers
-            parameters (list) Nested list of lists containing model parameters
-            accuracy   (int)  Accuracy associated with given model
-    Output: ok         (bool) Flag indicating that sess importation was set in cache correctly
+    Input:  sess_id    (str)            Unique session id
+            best       (str)            Dict representing best peer
+            peers      (list)           List of dicts representing peers
+            parameters (list, optional) Nested list of lists containing model parameters
+            accuracy   (int, optional)  Accuracy associated with given model
+    Output: ok         (bool)           Flag indicating that sess importation was set in cache correctly
     '''
     def __synchronize_parameters(self, sess_id, best, peers, sender, parameters=[], accuracy=0):
         # Get log
@@ -648,12 +648,12 @@ class ParameterServer(object):
     Internal API
     Update the accuracy and parameters of a session
 
-    Input:  sess_id    (str)    Session id
-            session    (string) Session id with updated values
-            parameters (tensor) Model parameters
-            accuracy   (float)  Corresponding model accuracy
+    Input:  sess_id    (str)              Session id
+            session    (string, optional) Session id with updated values
+            parameters (list, optional)   Model parameters represented in a list of lists
+            accuracy   (float, optional)  Corresponding model accuracy
             log        (Logger, optional) Session log
-    Output: ok         (bool)   Flag indicating if model was updated
+    Output: ok         (bool)             Flag indicating if model was updated
     '''
     def update_model(self, sess_id, session='', parameters=[], accuracy=-1, log=None):
         log.info('updating model id: {}'.format(sess_id))
@@ -714,9 +714,9 @@ class ParameterServer(object):
     Check that the given session does not overlap with the currently running sessions.
     If not existing cliques exist, then this returns an empty list.
 
-    Input:  peers  (list) List of dicts. See /distributed/config/party.json.
+    Input:  peers  (list)             List of dicts. See /distributed/config/party.json.
             log    (Logger, optional) Session log
-    Output: clique (list) List of dicts. 
+    Output: clique (list)             List of dicts. 
     '''
     def get_unique_clique(self, peers, log=None):
         possible_cliques = list(combinations(peers, self.uniform))
@@ -748,8 +748,8 @@ class ParameterServer(object):
     Internal API
     Establish a training clique
 
-    Input:  sess (Session)
-            log (Logger, optional) Session log
+    Input:  sess (dict)             Session object
+            log  (Logger, optional) Session log
     Output: List of peers {alias, host, port, accuracy} to __init_session()
     '''
     def __establish_clique(self, sess, log=None):
@@ -816,9 +816,9 @@ class ParameterServer(object):
     External API
     API for getting this member's parameters
 
-    Inputs: sess_id (str)
-    Output: parameters (list) Nested list of lists
-            accuracy (float)
+    Inputs: sess_id    (str)   Session id
+    Output: parameters (list)  Nested list of lists
+            accuracy   (float) Parameter accuracy or -1 if cannot load parameters
     '''
     def get_parameters(self, sess_id):
         try:
