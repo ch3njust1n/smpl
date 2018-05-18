@@ -556,7 +556,9 @@ class ParameterServer(object):
 
                 while len(resp) == 0:
                     _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
+                    self.check_resp(resp)
                     sleep(random())
+
                 ok = True
                 parameters = resp[0]
                 sess = {"parameters": parameters, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
@@ -611,7 +613,7 @@ class ParameterServer(object):
 
         if best['alias'] != sess['me']['alias']:
             ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
-
+            self.check_resp(model)
             if len(model) == 0:
                 return ''
 
@@ -765,6 +767,8 @@ class ParameterServer(object):
             ok, resp = self.pc.send(send_to['host'], send_to['port'], 
                                     {"api": "establish_session", "args": [sess['id']]})
 
+            self.check_resp(resp)
+
             if len(resp) > 0:
                 peers.append(resp)
 
@@ -837,6 +841,18 @@ class ParameterServer(object):
         except KeyError as e:
             self.log.exception('ps.get_parameters() sess_id:{}'.format(sess_id))
             return 'invalid'
+
+
+    '''
+    Check response from ParameterChannel and handle appropriately here in ParameterServer
+    '''
+    def check_resp(self, resp):
+        if len(resp) == 0:
+            with self.count_lock:
+                count = int(self.cache.get('curr_edges'))
+                if count >= 0:
+                    self.cache.set('curr_edges', count-1)
+
 
 
     '''

@@ -90,15 +90,22 @@ class ToolBox(object):
 	Output: count (int)  Number of files containing term
 	        files (list) List of file paths
 	'''
-	def grep_all(self, term, paths, debug=False):
+	def grep_all(self, term, paths, case=False, debug=False):
 		files = {'match': [], 'mismatch': []}
 		count = 0
 
 		for log in paths:
 			with open(log, 'rb') as f:
 				log = log.split('/')[-1]
+				content = f.read()
+				match = False
 
-				if term in f.read():
+				if case:
+					match = term.lower() in content.lower()
+				else:
+					match = term in content
+
+				if match:
 					count += 1
 					files['match'].append(log)
 				else:
@@ -191,6 +198,7 @@ def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--host', type=str, default='localhost', help='Redis host')
 	parser.add_argument('--port', type=int, default=6379, help='Redis port')
+	parser.add_argument('--case', '-c', action='store_true', help='Set for case sensitive matching when using the --grep option')
 	parser.add_argument('--check', '-ch', action='store_true', help='Check that all hyperedges completed training')
 	parser.add_argument('--clear', action='store_true', help='Clear all logs')
 	parser.add_argument('--db', type=int, default=0, help='Redis db')
@@ -223,8 +231,8 @@ def main():
 	if args.grep != None:
 		all_logs = tb.get_logs(args.log_dir)
 		total = len(all_logs)
-		count, files = tb.grep_all(args.grep, all_logs)
-		print_files(files, 'matching files')
+		count, files = tb.grep_all(args.grep, all_logs, case=args.case)
+		tb.print_files(files, 'matching files')
 		print('matching files: {}/{} ({}%)'.format(count, total, 100*count/total))
 	
 	# Display all available keys

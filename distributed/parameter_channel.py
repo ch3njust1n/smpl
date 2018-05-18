@@ -167,7 +167,6 @@ class ParameterChannel(object):
                     self.reconnect((host, port))
                 else:
                     self.log.exception(e)
-                    # raise Exception(e)
                     del self.connections[addr]
                     return False, ''
 
