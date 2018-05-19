@@ -495,8 +495,7 @@ class ParameterServer(object):
 
         # Get log
         try:
-            log_name = sess["log"]
-            log, log_path = utils.log(self.log_dir, log_name)
+            log, log_path = utils.log(self.log_dir, sess["log"])
 
             if gradient_hash != hash(str(gradients)):
                 log.error('gradient hash incorrect')
