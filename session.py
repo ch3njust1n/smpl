@@ -232,8 +232,9 @@ def main():
 		all_logs = tb.get_logs(args.log_dir)
 		total = len(all_logs)
 		count, files = tb.grep_all(args.grep, all_logs, case=args.case)
-		tb.print_files(files, 'matching files')
-		print('matching files: {}/{} ({}%)'.format(count, total, 100*count/total))
+		tb.print_files(files['mismatch'], 'mismatch')
+		tb.print_files(files['match'], 'matches')
+		print('match rate: {}/{} ({}%)'.format(count, total, 100*count/total))
 	
 	# Display all available keys
 	if args.keys:

@@ -147,13 +147,17 @@ class ParameterServer(object):
 
         try:
             while True:
-                if int(self.cache.get('hyperedges')) == self.hyperepochs:
+                if int(self.cache.get('hyperedges')) == self.hyperepochs and len(self.pc) == 0:
                     self.log.info('ps.listen teardown')
                     self.pc.teardown()
                     break
 
                 conn, addr = self.sock.accept()
-                self.log.info('ps.listen from {}'.format(str(addr)))
+
+                if self.hyperepochs > len(self.peers):
+                    self.log.info('reconnect from: {}'.format(addr))
+
+                self.log.info('join from {}'.format(str(addr)))
                 p = Process(target=self.__receive, args=(conn, addr))
                 p.start()
 
@@ -176,8 +180,8 @@ class ParameterServer(object):
             packet = ''
             # Process that maintains a hyperedge
             while 1:
-                if int(self.cache.get('hyperedges')) == self.hyperepochs:
-                    self.log.info('ps.receive: training complete')
+                if int(self.cache.get('hyperedges')) == self.hyperepochs and len(self.pc) == 0:
+                    self.log.info('hyperepochs: {}\tconnections: {}'.format(len(self.pc)))
                     break
 
                 packet = conn.recv(4096)
