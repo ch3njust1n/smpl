@@ -12,17 +12,36 @@ from time import gmtime, strftime
 from sys import getsizeof
 
 
-def log(directory, filename):
-    # Setup logging
-    logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger()
+def log(directory, filename, mode='a', level=logging.DEBUG):
+    if filename.endswith('.log'):
+        filename = filename.split('.')[0]
+
     path = os.path.join(directory, '{}.log'.format(filename))
-    handler = logging.FileHandler(filename=path)
-    formatter = logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    handler.createLock()
-    logger.addHandler(handler)
-    return logger, path
+    
+    formatter = logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(asctime)s - %(levelname)s - %(message)s')
+    fileHandler = logging.FileHandler(filename=path, mode=mode)
+    fileHandler.setFormatter(formatter)
+    streamHandler = logging.StreamHandler()
+    streamHandler.setFormatter(formatter)
+
+    log = logging.getLogger(filename)
+    log.setLevel(level)
+    log.addHandler(fileHandler)
+    log.addHandler(streamHandler)
+
+    return log, path
+
+
+'''
+Input:  logger   (logging.Logger) Logger object
+Output: filename (string)         Log filename
+'''
+def remove_log(logger, filename):
+    for i, l in enumerate(logger.handlers):
+        if filename in str(l):
+            l.close()
+            logger.removeHandler(l)
+            break
 
 
 def get_date():

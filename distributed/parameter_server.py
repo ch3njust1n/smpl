@@ -154,7 +154,7 @@ class ParameterServer(object):
 
                 conn, addr = self.sock.accept()
 
-                if self.hyperepochs > len(self.peers):
+                if int(self.cache.get('hyperedges')) > len(self.peers):
                     self.log.info('reconnect from: {}'.format(addr))
 
                 self.log.info('join from {}'.format(str(addr)))
@@ -496,8 +496,7 @@ class ParameterServer(object):
         # Get log
         try:
             log_name = sess["log"]
-            logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            log = logging.getLogger()
+            log, log_path = utils.log(self.log_dir, log_name)
 
             if gradient_hash != hash(str(gradients)):
                 log.error('gradient hash incorrect')
@@ -529,9 +528,8 @@ class ParameterServer(object):
     '''
     def __synchronize_parameters(self, sess_id, best, peers, sender, parameters=[], accuracy=0):
         # Get log
-        logname = ujson.loads(self.cache.get(sess_id))
-        logging.basicConfig(filename=logname, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        log = logging.getLogger()
+        log_name = ujson.loads(self.cache.get(sess_id))["log"]
+        log, log_path = utils.log(self.log_dir, log_name)
         log.info('api:synchronize_parameters')
 
         # Remove itself from its own peer list
@@ -794,12 +792,12 @@ class ParameterServer(object):
     def __establish_session(self, sess_id):
         # Setup logging for hyperedge
         log_name = '{}-{}'.format(self.me['id'], sess_id)
-        log, log_path = utils.log(self.log_dir, log_name)
+        log, log_path = utils.log(self.log_dir, log_name, mode='w')
         log.info('api:establish_session')
 
         with self.count_lock:
 
-            if not self.available(): #int(self.cache.get('curr_edges')) >= self.regular:
+            if not self.available():
                 log.info('maxed hyperedges')
                 os.remove(log_path)
                 self.log.debug('removed log: {}'.format(log_name))
@@ -831,8 +829,7 @@ class ParameterServer(object):
     def get_parameters(self, sess_id):
         try:
             log_name = ujson.loads(self.cache.get(sess_id))["log"]
-            logging.basicConfig(filename=log_name, filemode='a', level=logging.DEBUG, datefmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            log = logging.getLogger()
+            log, log_path = utils.log(self.log_dir, log_name)
             log.info('api:get_parameters sess_id: {}'.format(sess_id))
 
             model = ujson.loads(self.cache.get(sess_id))
