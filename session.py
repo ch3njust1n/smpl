@@ -83,12 +83,27 @@ class ToolBox(object):
 
 
 	'''
+	Check if log is valid
+
+	Input:  log (string) Absolute path to log file
+	Output: (bool) True if a valid log and False otherwise
+	'''
+	def is_valid_log(self, log):
+		first = ''
+		with open(log, 'rb') as f:
+			first = f.readline()
+		return 'train_hyperedge' in first or 'api:establish_session' in first
+
+
+	'''
 	Find all files containing given term
 
-	Input:  paths (list) List of file paths
-		    debug (bool) Set to True to grab last function call in logs
-	Output: count (int)  Number of files containing term
-	        files (list) List of file paths
+	Input:  term  (string) Search term
+			paths (list)   List of file paths
+			case  (bool)   True if case-sensitive
+		    debug (bool)   Set to True to grab last function call in logs
+	Output: count (int)    Number of files containing term
+	        files (list)   List of file paths
 	'''
 	def grep_all(self, term, paths, case=False, debug=False):
 		files = {'match': [], 'mismatch': []}
@@ -124,6 +139,7 @@ class ToolBox(object):
 							print 'IOError: {}'.format(log)
 					else:
 						files['mismatch'].append(log)
+			
 
 		return count, files
 
@@ -145,7 +161,8 @@ class ToolBox(object):
 		ps_logs = []
 		for l in self.get_logs(log_dir):
 			if 'ps' not in l:
-				all_logs.append(l)
+				if self.is_valid_log(l): all_logs.append(l)
+				else: os.remove(l)
 			else:
 				ps_logs.append(l)
 
@@ -158,9 +175,10 @@ class ToolBox(object):
 			print('completed hyperedges: {}/{} ({}%)'.format(complete, total, 100*complete/total))
 
 			total = len(ps_logs)
-			complete, files = self.grep_all('Hypergraph Complete', ps_logs)
-			self.print_files(files['mismatch'], 'incomplete peers')
-			print('completed training: {}/{} ({}%)'.format(complete, total, 100*complete/total))
+			if total > 0:
+				complete, files = self.grep_all('Hypergraph Complete', ps_logs)
+				self.print_files(files['mismatch'], 'incomplete peers')
+				print('completed training: {}/{} ({}%)'.format(complete, total, 100*complete/total))
 
 			self.print_files(self.get_edges(), 'variables')
 		else:
