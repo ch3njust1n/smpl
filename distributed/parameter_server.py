@@ -400,7 +400,10 @@ class ParameterServer(object):
         # increment total successful training epoches and hyperedges
         with self.count_lock:
             self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
-            self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
+            count = int(self.cache.get('curr_edges'))
+            
+            if count > 0:
+                self.cache.set('curr_edges', count-1)
             log.debug('hyperedge complete')
 
 
@@ -850,9 +853,8 @@ class ParameterServer(object):
         if len(resp) == 0:
             with self.count_lock:
                 count = int(self.cache.get('curr_edges'))
-                if count >= 0:
+                if count > 0:
                     self.cache.set('curr_edges', count-1)
-
 
 
     '''
