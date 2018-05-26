@@ -285,13 +285,16 @@ class ParameterServer(object):
     where no one joins anyone else's hyperedge and all peers request each other.
     '''
     def __async_train(self):
+        procs = [Process(target=self.__train_hyperedge) for i in range(0, self.hyperepochs)]
         while 1:
             sleep(uniform(0,3))
             with self.count_lock:
-                if int(self.cache.get('hyperedges')) >= self.hyperepochs:
-                    break
-                elif self.available(): #int(self.cache.get('curr_edges')) < self.regular:
-                    Process(target=self.__train_hyperedge).start()
+                if self.available():
+                    try:
+                        procs.pop().start()
+                    except IndexError as e:
+                        self.log.debug('len(procs): {}'.format(len(procs)))
+                        break
         self.log.info('Hypergraph Complete')
 
 
@@ -771,6 +774,7 @@ class ParameterServer(object):
             ok, resp = self.pc.send(send_to['host'], send_to['port'], 
                                     {"api": "establish_session", "args": [sess['id']]})
 
+            log.debug('sent to {}'.format(send_to['host']))
             self.check_resp(resp)
 
             if len(resp) > 0:
