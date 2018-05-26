@@ -286,15 +286,18 @@ class ParameterServer(object):
     '''
     def __async_train(self):
         procs = [Process(target=self.__train_hyperedge) for i in range(0, self.hyperepochs)]
-        while 1:
+        # while 1:
+        #     sleep(uniform(0,3))
+        #     with self.count_lock:
+        #         if self.available():
+        #             try:
+        #                 procs.pop().start()
+        #             except IndexError as e:
+        #                 break
+        for p in procs:
             sleep(uniform(0,3))
-            with self.count_lock:
-                if self.available():
-                    try:
-                        procs.pop().start()
-                    except IndexError as e:
-                        self.log.debug('len(procs): {}'.format(len(procs)))
-                        break
+            p.start()
+        for p in procs: p.join()
         self.log.info('Hypergraph Complete')
 
 
@@ -309,16 +312,19 @@ class ParameterServer(object):
         connected = False
         sess_id = ''
 
-        # establish clique
-        sess_id = self.__init_session(log=log, log_path=log_path)
+        while len(sess_id) == 0:
+            # establish clique
+            sleep(uniform(0,3))
+            sess_id = self.__init_session(log=log, log_path=log_path)
 
-        if len(sess_id) == 0:
-            self.log.debug('killing session')
-            try:
-                os.remove(log_path)
-            except OSError as e:
-                self.log.debug(e)
-            return
+            # if len(sess_id) == 0:
+            # self.log.debug('killing session')
+            # try:
+            #     os.remove(log_path)
+            # except OSError as e:
+            #     self.log.debug(e)
+
+            # return
 
         log.info('session id: {}'.format(sess_id))
 
