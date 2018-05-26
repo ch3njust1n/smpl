@@ -58,12 +58,22 @@ class ParameterChannel(object):
             try:
                 sock.connect(addr_tup)
                 self.connections[addr_key] = sock
-                # tmp = self.connections
-                # tmp[address] = sock
-                # self.connections = tmp
-            except socket.error as sock_err:
+            except socket.error as err:
                 sleep(1)
-                self.log.error('{}, addr: {}'.format(str(sock_err), addr_key))
+                self.log.error('{}, addr: {}'.format(str(err), addr_key))
+
+                '''
+                ENETDOWN        Network is down
+                ENETUNREACH     Network is unreachable
+                ECONNABORTED    Connection reset by peer
+                EHOSTUNREACH    No route to host
+                
+                Python TCP socket error message:
+                https://docs.python.org/2/library/errno.html#module-errno
+                '''
+                if err == socket.errno.ENETDOWN or err == socket.errno.ENETUNREACH or err == socket.errno.ECONNABORTED or err == socket.errno.EHOSTUNREACH:
+                    break
+
             except KeyError as key_err:
                 self.log.error(str(key_err))
 
@@ -161,9 +171,18 @@ class ParameterChannel(object):
                 sock.sendall(msg)
                 resp = sock.recv(4096).split('::')
             except socket.error, e:
-                if e.errno == socket.errno.ECONNRESET:
-                    sock.shutdown(2)
-                    sock.close()
+                sock.shutdown(2)
+                sock.close()
+
+                '''
+                ECOMM       Communication error on send
+                ECONNRESET  Connection reset by peer
+                EPIPE       Broken pipe
+
+                Python TCP socket error message:
+                https://docs.python.org/2/library/errno.html#module-errno
+                '''
+                if e.errno == socket.errno.ECONNRESET or e.errno == socket.errno.EPIPE or socket.errno.ECOMM:
                     self.reconnect((host, port))
                 else:
                     self.log.exception(e)
@@ -260,3 +279,10 @@ class ParameterChannel(object):
     '''
     def __str__(self):
         return str(self.connections)
+
+
+    '''
+    Return total number of existing connections
+    '''
+    def __len__(self):
+        return len(self.connections)
