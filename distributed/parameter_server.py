@@ -246,6 +246,8 @@ class ParameterServer(object):
             return self.get_parameters(*args)
         elif api == 'share_grad':
             return self.__share_grad(*args)
+        elif api == 'done':
+            return self.done(*args)
         else:
             self.log.error('api:{}, args:{}'.format(api, args))
             return 'invalid'
@@ -288,7 +290,7 @@ class ParameterServer(object):
                     break
                 elif self.available(): #int(self.cache.get('curr_edges')) < self.regular:
                     Process(target=self.__train_hyperedge).start()
-        self.log.info('Hypergraph Complete')
+        self.log.info('peer-{} hypergraph complete'.format(self.me['id']))
 
 
     '''
@@ -398,6 +400,8 @@ class ParameterServer(object):
             self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
             log.debug('hyperedge complete')
+
+        # TODO: Broadcast done status to all peers
 
 
     '''
@@ -844,13 +848,29 @@ class ParameterServer(object):
 
 
     '''
+    External API
+
+    Peers broadcast that they've completed their hypergraph training to all other peers via this api call.
+    This updates the global state of training across the hypergraph so that each peer can eventually individually
+    determine when to exit the hypergraph.
+
+    Input: host (string) String of peer's IP address
+           port (strin)
+    '''
+    def done(self, host, port):
+        # TODO: update peer in redis cache indicating theyre done
+        pass
+
+
+
+    '''
     Check response from ParameterChannel and handle appropriately here in ParameterServer
     '''
     def check_resp(self, resp):
         if len(resp) == 0:
             with self.count_lock:
                 count = int(self.cache.get('curr_edges'))
-                if count >= 0:
+                if count > 0:
                     self.cache.set('curr_edges', count-1)
 
 
