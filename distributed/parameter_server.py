@@ -271,7 +271,7 @@ class ParameterServer(object):
     def available(self):
         curr_edges = int(self.cache.get('curr_edges'))
         completed = int(self.cache.get('hyperedges'))
-        return curr_edges < self.regular and (self.hyperepochs - completed - curr_edges) > 0
+        return curr_edges < self.regular and (self.hyperepochs - completed - curr_edges) >= 0
 
 
     '''
