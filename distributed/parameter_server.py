@@ -105,8 +105,6 @@ class ParameterServer(object):
         # Network() was named generically intentionally so that users can plug-and-play
         # Track best set of parameters. Equivalent of "global" params in central server model.
         # Stash this server's info
-        # self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, 
-        #                                    "parameters": [x.data.tolist() for x in net.DevNet().parameters()]}))
         self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
                                             "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()]}))
         self.cache.set('server', ujson.dumps({"clique": self.uniform, "host": self.host, "port": self.port}))
@@ -286,19 +284,17 @@ class ParameterServer(object):
     '''
     def __async_train(self):
         procs = [Process(target=self.__train_hyperedge) for i in range(0, self.hyperepochs)]
-        # while 1:
-        #     sleep(uniform(0,3))
-        #     with self.count_lock:
-        #         if self.available():
-        #             try:
-        #                 procs.pop().start()
-        #             except IndexError as e:
-        #                 break
-        for p in procs:
+
+        while 1:
             sleep(uniform(0,3))
-            p.start()
-        for p in procs: p.join()
-        self.log.info('Hypergraph Complete')
+            if len(procs) > 0:
+                with self.count_lock:
+                    if self.available():
+                        procs.pop().start()
+            else:
+                # check for all completion boardcasts
+                pass
+        self.log.info('hypergraph complete')
 
 
     '''
@@ -317,14 +313,14 @@ class ParameterServer(object):
             sleep(uniform(0,3))
             sess_id = self.__init_session(log=log, log_path=log_path)
 
-            # if len(sess_id) == 0:
-            # self.log.debug('killing session')
-            # try:
-            #     os.remove(log_path)
-            # except OSError as e:
-            #     self.log.debug(e)
-
-            # return
+        # if len(sess_id) == 0:
+        #     self.log.debug('killing session')
+        #     try:
+        #         os.remove(log_path)
+        #     except OSError as e:
+        #         self.log.debug(e)
+        #     sleep(uniform(4,8))
+        #     return
 
         log.info('session id: {}'.format(sess_id))
 
@@ -354,7 +350,6 @@ class ParameterServer(object):
         '''
         if log == None:
             log, log_path = utils.log(self.log_dir, 'train-{}'.format(sess_id))
-
 
         # Setup variables for sharing gradients
         sess = ujson.loads(self.cache.get(sess_id))
@@ -408,12 +403,13 @@ class ParameterServer(object):
 
         # increment total successful training epoches and hyperedges
         with self.count_lock:
-            self.cache.set('hyperedges', int(self.cache.get('hyperedges'))+1)
+            total = int(self.cache.get('hyperedges'))+1
+            self.cache.set('hyperedges', total)
             count = int(self.cache.get('curr_edges'))
             
             if count > 0:
                 self.cache.set('curr_edges', count-1)
-            log.debug('hyperedge complete')
+            log.debug('hyperedge complete\tcurr_edges:{}\thyperepochs: {}'.format(count, total))
 
 
     '''
@@ -569,7 +565,6 @@ class ParameterServer(object):
 
                 while len(resp) == 0:
                     _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
-                    self.check_resp(resp)
                     sleep(random())
 
                 ok = True
@@ -586,9 +581,6 @@ class ParameterServer(object):
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
-
-        with self.count_lock:
-            self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
         return ok
 
@@ -626,7 +618,7 @@ class ParameterServer(object):
 
         if best['alias'] != sess['me']['alias']:
             ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
-            self.check_resp(model)
+
             if len(model) == 0:
                 return ''
 
@@ -737,9 +729,12 @@ class ParameterServer(object):
         possible_cliques = list(combinations(peers, self.uniform))
         shuffle(possible_cliques)
 
+        log.debug('possible: {}'.format(possible_cliques))
+
         clique = []
         active = self.active_sessions(log=log)
 
+        # If no active hyperedges, return random hyperedge
         if len(active) == 0:
             return list(possible_cliques.pop(0))
 
@@ -753,7 +748,7 @@ class ParameterServer(object):
             intersect_lens = [len(possible_set.intersection(set([str(e) for e in edge]))) for edge in active_edges]
             
             if self.uniform - max(intersect_lens) >= self.variety:
-                log.debug('possible: {}'.format(possible))
+                log.debug('possible: {} len(pc): {}'.format(possible, len(self.pc)))
                 return list(possible)
 
         return clique
@@ -780,16 +775,13 @@ class ParameterServer(object):
             ok, resp = self.pc.send(send_to['host'], send_to['port'], 
                                     {"api": "establish_session", "args": [sess['id']]})
 
-            log.debug('sent to {}'.format(send_to['host']))
-            self.check_resp(resp)
-
             if len(resp) > 0:
                 peers.append(resp)
 
             if len(peers) >= self.uniform:
                 break
 
-        log.debug('peers: {}'.format(len(peers)))
+        log.debug('type:{} peers: {}'.format(type(unique), unique))
 
         return peers[:self.uniform]
 
@@ -810,7 +802,6 @@ class ParameterServer(object):
         with self.count_lock:
 
             if not self.available():
-                log.info('maxed hyperedges')
                 os.remove(log_path)
                 self.log.debug('removed log: {}'.format(log_name))
 
@@ -854,17 +845,6 @@ class ParameterServer(object):
         except KeyError as e:
             self.log.exception('ps.get_parameters() sess_id:{}'.format(sess_id))
             return 'invalid'
-
-
-    '''
-    Check response from ParameterChannel and handle appropriately here in ParameterServer
-    '''
-    def check_resp(self, resp):
-        if len(resp) == 0:
-            with self.count_lock:
-                count = int(self.cache.get('curr_edges'))
-                if count > 0:
-                    self.cache.set('curr_edges', count-1)
 
 
     '''
