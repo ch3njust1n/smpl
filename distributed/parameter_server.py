@@ -51,7 +51,8 @@ class ParameterServer(object):
         self.seed           = args.seed
         self.shuffle        = args.shuffle
         self.sparsity       = args.sparsity
-        self.uniform        = args.uniform-1
+        self.uniform        = args.uniform
+        self.uniform_ex     = self.uniform-1 # number of peers in an edge excluding itself
         self.variety        = args.variety
 
         self.__clear_port()
@@ -107,7 +108,7 @@ class ParameterServer(object):
         # Stash this server's info
         self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
                                             "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()]}))
-        self.cache.set('server', ujson.dumps({"clique": self.uniform, "host": self.host, "port": self.port}))
+        self.cache.set('server', ujson.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
         self.cache.set('curr_edges', 0)
         self.cache.set('hyperedges', 0)
 
@@ -726,7 +727,7 @@ class ParameterServer(object):
     Output: clique (list)             List of dicts. 
     '''
     def get_unique_clique(self, peers, log=None):
-        possible_cliques = list(combinations(peers, self.uniform))
+        possible_cliques = list(combinations(peers, self.uniform_ex))
         shuffle(possible_cliques)
 
         log.debug('possible: {}'.format(possible_cliques))
@@ -746,6 +747,8 @@ class ParameterServer(object):
         for possible in possible_cliques:
             possible_set = set([str(p) for p in possible])
             intersect_lens = [len(possible_set.intersection(set([str(e) for e in edge]))) for edge in active_edges]
+            
+            log.debug('uniform: {}, max(intersect_lens): {}, variety: {}'.format(self.uniform, max(intersect_lens), self.variety))
             
             if self.uniform - max(intersect_lens) >= self.variety:
                 log.debug('possible: {} len(pc): {}'.format(possible, len(self.pc)))
@@ -778,13 +781,10 @@ class ParameterServer(object):
             if len(resp) > 0:
                 peers.append(resp)
 
-            if len(peers) >= self.uniform:
-                break
-
         log.debug('type:{} peers: {}'.format(type(unique), unique))
 
-        return peers[:self.uniform]
-
+        return peers
+        
 
     '''
     External API
