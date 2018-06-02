@@ -286,9 +286,9 @@ class ParameterServer(object):
         origin = int(self.cache.get('origin_edges'))
         
         if log != None:
-            log.debug('curr_edges: {} < regular: {}, hyperepochs: {} - origin: {} - curr_edges: {}'.format(curr_edges, self.regular, self.hyperepochs, origin, curr_edges))
+            log.debug('curr_edges: {} < regular: {}'.format(curr_edges, self.regular))
         
-        return curr_edges < self.regular and (self.hyperepochs - origin - curr_edges) >= 0
+        return curr_edges < self.regular
 
 
     '''
@@ -881,7 +881,7 @@ class ParameterServer(object):
             self.log.exception('sess_id:{}'.format(sess_id))
             return 'invalid'
 
-
+    '''
     Internal API
     Input: signal, frame
     '''
