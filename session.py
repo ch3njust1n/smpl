@@ -176,7 +176,7 @@ class ToolBox(object):
 
 			total = len(ps_logs)
 			if total > 0:
-				complete, files = self.grep_all('Hypergraph Complete', ps_logs)
+				complete, files = self.grep_all('hypergraph complete', ps_logs)
 				self.print_files(files['mismatch'], 'incomplete peers')
 				print('completed training: {}/{} ({}%)'.format(complete, total, 100*complete/total))
 

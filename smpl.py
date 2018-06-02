@@ -61,11 +61,8 @@ def main():
 
     # Launch parameter server
     try:
-        start = time.time()
         ps = ParameterServer(args)
-
-        signal.signal(signal.SIGINT, ps.force_stop)
-        print('time (second): ', time.time() - start)
+        # signal.signal(signal.SIGINT, ps.force_stop)
     except KeyboardInterrupt:
         pass
 

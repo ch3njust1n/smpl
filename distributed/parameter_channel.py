@@ -171,7 +171,6 @@ class ParameterChannel(object):
                 sock.sendall(msg)
                 resp = sock.recv(4096).split('::')
             except socket.error, e:
-                sock.shutdown(2)
                 sock.close()
 
                 '''
@@ -193,7 +192,7 @@ class ParameterChannel(object):
                 self.log.debug('invalid addr: {}, msg: {}'.format(addr, msg))
             
             # Check that a length is given
-            if len(resp[0]) > 0:
+            if len(resp) > 0 and len(resp[0]) > 0:
                 expected = 0
 
                 try:
