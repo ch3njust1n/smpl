@@ -487,7 +487,7 @@ class ParameterServer(object):
             log         (Logger, optional) Session log
     '''
     def __allreduce(self, sess_id, sess, gradients, sample_size, log=None):
-        done =  int(self.cache.get('done')) == 1
+        # if sess['type'] == 1 and int(self.cache.get('done')) == 0:
 
         # Async send gradients to all peers in hyperedge
         for send_to in sess['party']:
@@ -675,7 +675,7 @@ class ParameterServer(object):
                                                 "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
                                                 "log": log_path, "share_count": 0, "gradients": [], 
                                                 "share_train_sizes": 0, "train_batches": 0, "val_batches": 0,
-                                                "done": False}))
+                                                "done": False, "type": 1}))
         except IndexError as e:
             log.exception(e)
 
@@ -852,7 +852,7 @@ class ParameterServer(object):
 
                 self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path,
                                                      "share_train_sizes": 0, "share_count": 0, 
-                                                     "gradients": [], "done": False}))
+                                                     "gradients": [], "done": False, "type": 0}))
                 return me
 
 
