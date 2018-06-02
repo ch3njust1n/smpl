@@ -259,6 +259,8 @@ class ParameterServer(object):
             return self.get_parameters(*args)
         elif api == 'share_grad':
             return self.__share_grad(*args)
+        elif api == 'done':
+            return self.done(*args)
         else:
             self.log.error('api:{}, args:{}'.format(api, args))
             return 'invalid'
@@ -302,6 +304,7 @@ class ParameterServer(object):
 
         while 1:
             sleep(uniform(0,3))
+            
             if len(procs) > 0:
                 with self.count_lock:
                     if self.available():
@@ -431,6 +434,8 @@ class ParameterServer(object):
             if count > 0:
                 self.cache.set('curr_edges', count-1)
             log.debug('hyperedge complete\tcurr_edges:{}\thyperepochs: {}'.format(count, total))
+
+        # TODO: Broadcast done status to all peers
 
 
     '''
@@ -877,7 +882,6 @@ class ParameterServer(object):
             return 'invalid'
 
 
-    '''
     Internal API
     Input: signal, frame
     '''
