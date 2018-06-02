@@ -24,7 +24,7 @@ import os, torch, ujson, redis, socket, logging, utils, test, train, data
 
 class ParameterServer(object):
     def __init__(self, args):
-        
+        start_time          = time()
         self.ds_host        = args.ds_host
         self.ds_port        = args.ds_port
         self.host           = args.host
@@ -60,6 +60,7 @@ class ParameterServer(object):
         # Locks
         self.count_lock = Lock()
         self.done_lock = Lock()
+        self.sock_lock = Lock()
 
         # Get data
         Thread(target=self.__load_data).start()
@@ -113,6 +114,7 @@ class ParameterServer(object):
         self.cache.set('curr_edges', 0)
         self.cache.set('hyperedges', 0)
         self.cache.set('origin_edges', 0)
+        self.cache.set('sock_pids', [])
         self.cache.set('done', 0)
         self.cache.set('peer_status', ujson.dumps([{'alias': p['alias'], 'done': 0} for p in self.peers]))
 
@@ -131,7 +133,11 @@ class ParameterServer(object):
 
         # Init training
         self.__async_train()
+        self.log.info('total time: {} (seconds)'.format(time()-start_time))
 
+        # Disconnect from hypergraph
+        self.shutdown()
+        
 
     '''
     Internal API
@@ -150,11 +156,6 @@ class ParameterServer(object):
 
         try:
             while True:
-                if int(self.cache.get('hyperedges')) == self.hyperepochs and len(self.pc) == 0:
-                    self.log.info('teardown')
-                    self.pc.teardown()
-                    break
-
                 conn, addr = self.sock.accept()
 
                 if int(self.cache.get('hyperedges')) > len(self.peers):
@@ -178,14 +179,19 @@ class ParameterServer(object):
            add (tuple)
     '''
     def __receive(self, conn, addr):
+        # Track pids for shutdown
+        with self.sock_lock:
+            sock_pids = ujson.loads(self.cache.get('sock_pids'))
+            sock_pids.append(os.getpid())
+            self.cache.set('sock_pids', ujson.dumps(sock_pids))
+
         try:
             resp = {}
             packet = ''
             # Process that maintains a hyperedge
             while 1:
-                if int(self.cache.get('hyperedges')) == self.hyperepochs and len(self.pc) == 0:
-                    self.log.info('hyperepochs: {}\tconnections: {}'.format(len(self.pc)))
-                    break
+                with self.done_lock:
+                    if int(self.cache.get('done')) == 1: break
 
                 packet = conn.recv(4096)
 
@@ -228,7 +234,7 @@ class ParameterServer(object):
             self.log.exception(e)
             conn.sendall('invalid protocol')
         finally:
-            self.log.info('closing connection')
+            self.log.info('closing connection to {}'.format(addr))
             conn.close()
 
 
@@ -307,10 +313,12 @@ class ParameterServer(object):
             else:
                 # check for all completion boardcasts
                 with self.done_lock:
-                    peers = ujson.loads(self.cache.get('peers'))
+                    peers = ujson.loads(self.cache.get('peer_status'))
                     done_count = sum([int(p['done']) for p in peers])
                     self.log.debug('len(peers): {}, done_count: {}'.format(len(peers), done_count))
-                    if len(peers) == done_count: break
+                    if len(peers) == done_count: 
+                        self.cache.set('done', 1)
+                        break
 
         self.log.info('hypergraph complete')
 
@@ -874,7 +882,7 @@ class ParameterServer(object):
     Input: signal, frame
     '''
     def force_stop(self, signal, frame):
-        self.stop()
+        self.shutdown()
 
 
     '''
@@ -889,12 +897,13 @@ class ParameterServer(object):
     Internal API
     Stops the parameter server
     '''
-    def stop(self):
+    def shutdown(self):
         try:
-            self.sock.close()
+            self.pc.teardown()
             self.log.info('exiting ps')
+            [os.kill(pid, signal.SIGTERM) for pid in ujson.loads(self.cache.get('sock_pids'))]
             sys.exit(0)
-        except Exception as e:
-            self.log.exception('Could not close ParameterServer socket')
+        except Exception:
+            self.log.error('Error shutting down')
             return False
         return True
