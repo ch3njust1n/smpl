@@ -186,8 +186,9 @@ class ToolBox(object):
 
 
 	def get_edges(self):
-		return ['current edges:   {}'.format(self.get_object('curr_edges')),
-		        'hyperedge count: {}'.format(self.get_object('hyperedges'))]
+		return ['origin edges: 	 {}'.format(self.get_object('origin_edges')),
+			    'current edges:   {}'.format(self.get_object('curr_edges')),
+		        'hyperedge count: {}'.ljust(20).format(self.get_object('hyperedges'))]
 
 
 	'''
