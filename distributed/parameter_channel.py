@@ -9,6 +9,7 @@
 import socket, ujson, select
 from multiprocessing import Manager
 from threading import Thread
+from random import random
 from time import sleep
 import copy_reg
 from multiprocessing.reduction import rebuild_socket, reduce_socket
@@ -165,6 +166,7 @@ class ParameterChannel(object):
                 return False, ''
 
             sock = self.connections[addr]
+            api = msg['api']
             msg = self.format_msg(msg)
 
             try:
@@ -183,6 +185,7 @@ class ParameterChannel(object):
                 '''
                 if e.errno == socket.errno.ECONNRESET or e.errno == socket.errno.EPIPE or socket.errno.ECOMM:
                     self.reconnect((host, port))
+                    return False, ''
                 else:
                     self.log.exception(e)
                     del self.connections[addr]
@@ -230,12 +233,33 @@ class ParameterChannel(object):
                     return False, ''
 
             else:
-                self.log.error('empty reply from {} for api:{}'.format(addr, msg))
+                self.log.error('empty reply from {} for api: {}'.format(addr, api))
                 content = ''
         except Exception as e:
             self.log.exception(str(e))
 
         return ok, content
+
+
+    '''
+    Wraper for send() to persistently, hence psend, retry until message is successfully sent.
+    This should be called in a Thread or Process so that it does not tie up the initiating process.
+
+    Input:  host (string) IP address
+            port (int) Port number
+            msg (dict) API function call and parameters
+    Output: ok (bool)
+            content (dict)
+    '''
+    def psend(self, host, port, msg):
+        ok = False
+        resp = None
+
+        while not ok:
+            sleep(random())
+            ok, resp = self.send(host, port, msg)
+
+        return ok, resp
 
 
     '''

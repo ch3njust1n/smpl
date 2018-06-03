@@ -279,11 +279,11 @@ class ParameterServer(object):
     '''
     Check if peer can support starting another hyperedge
 
-    Output: (bool) True if this peer can start another hyperepoch
+    Input:  log (Logger, optional) Session log
+    Output:     (bool)             True if this peer can start another hyperepoch
     '''
     def available(self, log=None):
         curr_edges = int(self.cache.get('curr_edges'))
-        origin = int(self.cache.get('origin_edges'))
         
         if log != None:
             log.debug('curr_edges: {} < regular: {}'.format(curr_edges, self.regular))
@@ -310,7 +310,6 @@ class ParameterServer(object):
                     if self.available():
                         try:
                             procs.pop().start()
-                            self.cache.set('origin_edges', int(self.cache.get('origin_edges'))+1)
                         except IndexError:
                             self.log.info('max hyperepochs')
             else:
@@ -318,11 +317,12 @@ class ParameterServer(object):
                 with self.done_lock:
                     peers = ujson.loads(self.cache.get('peer_status'))
                     done_count = sum([int(p['done']) for p in peers])
-                    self.log.debug('len(peers): {}, done_count: {}'.format(len(peers), done_count))
+
                     if len(peers) == done_count: 
                         self.cache.set('done', 1)
                         break
-
+                        
+        self.log.debug('done status: len(peers): {}, done_count: {}'.format(len(peers), done_count))
         self.log.info('hypergraph complete')
 
 
@@ -344,6 +344,10 @@ class ParameterServer(object):
             sess_id = self.__init_session(log=log, log_path=log_path)
 
         log.info('session id: {}'.format(sess_id))
+
+        self.done_lock.acquire()
+        self.cache.set('origin_edges', int(self.cache.get('origin_edges'))+1)
+        self.done_lock.release()
 
         with self.count_lock:
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
@@ -402,6 +406,7 @@ class ParameterServer(object):
         self.cache.set(sess_id, ujson.dumps(sess))
 
         self.cleanup(sess_id, sess, log)
+        self.broadcast(sess, log=log)
 
         return sess
 
@@ -434,8 +439,6 @@ class ParameterServer(object):
             if count > 0:
                 self.cache.set('curr_edges', count-1)
             log.debug('hyperedge complete\tcurr_edges:{}\thyperepochs: {}'.format(count, total))
-
-        # TODO: Broadcast done status to all peers
 
 
     '''
@@ -472,153 +475,6 @@ class ParameterServer(object):
             t.train()
 
         log.info('local ({} s)'.format(time()-start_time))
-
-
-    '''
-    Internal API
-    Average gradients, distribute to other peers, and update gradients in model.
-    This is only called by the Train.train() at the end of local training.
-
-    Input:  sess_id     (str)  Session id
-            gradients   (list) List of torch.FloatTensors
-            sample_size (int)  Total number of samples used to train. Required 
-                               to calculate the weighted contribution of this 
-                               peer's gradients
-            log         (Logger, optional) Session log
-    '''
-    def __allreduce(self, sess_id, sess, gradients, sample_size, log=None):
-        # if sess['type'] == 1 and int(self.cache.get('done')) == 0:
-
-        # Async send gradients to all peers in hyperedge
-        for send_to in sess['party']:
-            log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
-            Thread(target=self.pc.send, 
-                   args=(send_to['host'], send_to['port'], 
-                         {"api": "share_grad", "args": [sess_id, self.me['alias'], hash(str(gradients)), gradients, sample_size, done]})).start()
-
-        # Wait until all peers have shared their gradients
-        # Remove this barrier to make hyperedges asynchronous
-        while 1:
-            sess = ujson.loads(self.cache.get(sess_id))
-            share_count = sess['share_count']
-
-            if int(share_count) == len(sess['party']): break
-            if int(share_count) > len(sess['party']):
-                log.error('share_count: {} > sess[party]: {}'.format(int(share_count), len(sess['party'])))
-                raise Exception('share count cannot be greater than total party size')
-            sleep(random())
-
-        log.info('done sync barrier')
-
-
-    '''
-    External API 
-    Receive gradients from peers.
-
-    Inputs:  sess_id   (str)  Session id
-             sender    (dict) Alias of sender
-             gradients (list) Nested list of coordinate-gradient pairs
-             samples   (int)  Number of samples sending peer used to generate given gradients
-             done      (bool) True if sending peer is done training. Otherwise, False
-    Output:  ok        (bool) Bool indicating that session exists and values were updated
-    '''
-    def __share_grad(self, sess_id, sender, gradient_hash, gradients, samples, done):
-        if not self.cache.exists(sess_id):
-            print 'sessDNE sess_id: {}'.format(sess_id)
-            return False
-
-        sess = ujson.loads(self.cache.get(sess_id))
-
-        # Get log
-        try:
-            log, log_path = utils.log(self.log_dir, sess["log"])
-
-            if gradient_hash != hash(str(gradients)):
-                log.error('gradient hash incorrect')
-
-            # Update status of peers if they indicate that they're done training
-            if done:
-                with self.done_lock:
-                    peers = ujson.loads(self.cache.get('peer_status'))
-                    i = next((i for (i, d) in enumerate(peers) if d['alias'] == sender), None)
-                    peers[i]['done'] = 1
-                    self.cache.set('peer_status', ujson.dumps(peers))
-
-            sess['share_count'] = 1 + int(sess['share_count'])
-            sess['gradients'].append(gradients)
-            sess['share_train_sizes'] = samples + int(sess['share_train_sizes'])
-            self.cache.set(sess_id, ujson.dumps(sess))
-        except KeyError as e:
-            self.log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
-            return 'invalid'
-        except Exception as e:
-            raise Exception('Unexpected error: {}'.format(e))
-            return 'invalid'
-
-        return True
-
-
-    '''
-    External API
-    Synchronize parameters
-
-    Input:  sess_id    (str)            Unique session id
-            best       (str)            Dict representing best peer
-            peers      (list)           List of dicts representing peers
-            parameters (list, optional) Nested list of lists containing model parameters
-            accuracy   (int, optional)  Accuracy associated with given model
-    Output: ok         (bool)           Flag indicating that sess importation was set in cache correctly
-    '''
-    def __synchronize_parameters(self, sess_id, best, peers, sender, parameters=[], accuracy=0):
-        # Get log
-        log_name = ujson.loads(self.cache.get(sess_id))["log"]
-        log, log_path = utils.log(self.log_dir, log_name)
-        log.info('api:synchronize_parameters')
-
-        # Remove itself from its own peer list
-        for i, p in enumerate(peers):
-            if p['host'] == self.me['host']:
-                peers.pop(i)
-                break
-
-        ok = False
-        peers.append(sender)
-
-        # If not explicitely given parameters and accuracy, retrieve parameters from the specified best peer
-        if len(parameters) == 0:
-            # If my parameters do not have the best validation accuracy
-            best_params = None
-            sess = {}
-
-            if best['host'] == self.me['host']:
-                sess = ujson.loads(self.cache.get('best'))
-                sess["party"] = peers
-                parameters = sess["parameters"]
-            else:
-                # Always only wanna synchronize with the local parameters of peer with the best parameters
-                # not their globally best parameters, just the parameters they're using for this hyperedge
-                resp = []
-
-                while len(resp) == 0:
-                    _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
-                    sleep(random())
-
-                ok = True
-                parameters = resp[0]
-                sess = {"parameters": parameters, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
-            
-            sess.update(ujson.loads(self.cache.get(sess_id)))
-            ok = self.cache.set(sess_id, ujson.dumps(sess))
-        else:
-            # Else parameters were explicitely given, so update with those
-            ok = self.update_model(sess_id, parameters=parameters, accuracy=accuracy, log=log)
-
-        # Start locally training
-        nn = net.DevNet(seed=self.seed, log=log)
-        nn.update_parameters(parameters)
-        Process(target=self.__train, args=(sess_id, log,)).start()
-
-        return ok
 
 
     '''
@@ -665,7 +521,7 @@ class ParameterServer(object):
 
         # Synchronize parameters of model with best validation accuracy
         for i, send_to in enumerate(peers):
-            Thread(target=self.pc.send, 
+            Thread(target=self.pc.psend, 
                 args=(send_to['host'], send_to['port'],
                       {"api": "synchronize_parameters", "args": args},)).start()
 
@@ -676,8 +532,8 @@ class ParameterServer(object):
                                                 "log": log_path, "share_count": 0, "gradients": [], 
                                                 "share_train_sizes": 0, "train_batches": 0, "val_batches": 0,
                                                 "done": False, "type": 1}))
-        except IndexError as e:
-            log.exception(e)
+        except (IndexError, KeyError) as e:
+            log.error(e)
 
         if not self.cache.exists(sess_id):
             log.error('Error: key insertion failure {}'.format(sess_id))
@@ -782,7 +638,6 @@ class ParameterServer(object):
             possible_set = set([str(p) for p in possible])
             intersect_lens = [len(possible_set.intersection(set([str(e) for e in edge]))) for edge in active_edges]
             
-            self.available(log=log)            
             log.debug('uniform: {}, max(intersect_lens): {}, variety: {}'.format(self.uniform, max(intersect_lens), self.variety))
             
             if self.uniform - max(intersect_lens) >= self.variety:
@@ -815,11 +670,67 @@ class ParameterServer(object):
             if len(resp) > 0:
                 peers.append(resp)
 
-        self.available(log=log)
         log.debug('type:{} peers: {}'.format(type(unique), unique))
 
         return peers
-        
+
+
+    '''
+    Internal API
+    Average gradients, distribute to other peers, and update gradients in model.
+    This is only called by the Train.train() at the end of local training.
+
+    Input:  sess_id     (str)  Session id
+            gradients   (list) List of torch.FloatTensors
+            sample_size (int)  Total number of samples used to train. Required 
+                               to calculate the weighted contribution of this 
+                               peer's gradients
+            log         (Logger, optional) Session log
+    '''
+    def __allreduce(self, sess_id, sess, gradients, sample_size, log=None):
+
+        # Async send gradients to all peers in hyperedge
+        for send_to in sess['party']:
+            log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
+            Thread(target=self.pc.psend, 
+                   args=(send_to['host'], send_to['port'], 
+                         {"api": "share_grad", "args": [sess_id, self.me['alias'], hash(str(gradients)), gradients, sample_size]})).start()
+
+        # Wait until all peers have shared their gradients
+        # Remove this barrier to make hyperedges asynchronous
+        while 1:
+            sess = ujson.loads(self.cache.get(sess_id))
+            share_count = sess['share_count']
+
+            if int(share_count) == len(sess['party']): break
+            if int(share_count) > len(sess['party']):
+                log.error('share_count: {} > sess[party]: {}'.format(int(share_count), len(sess['party'])))
+                raise Exception('share count cannot be greater than total party size')
+            sleep(random())
+
+        log.info('done sync barrier')
+
+
+    '''
+    Internal API
+
+    Input: sess (dict)   Session object
+           log  (Logger, optional) Session log
+    '''
+    def broadcast(self, sess, log=None):
+        # Check if this is the last hyperedge spawned by this ParameterServer
+        # and set status indicating that all spawned hyperedges successfully finished
+        if sess['type'] == 1 and int(self.cache.get('done')) == 0:
+            with self.done_lock:
+                if int(self.cache.get('origin_edges')) == self.hyperepochs:
+                    self.cache.set('done', 1)
+                    log.info('broadcasting done')
+
+                    # Broadcast to all peers that you're done
+                    for send_to in self.peers:
+                        Thread(target=self.pc.psend, args=(send_to['host'], send_to['port'], 
+                               {"api": "done", "args": [self.me['alias']]})).start()
+
 
     '''
     External API
@@ -858,6 +769,69 @@ class ParameterServer(object):
 
     '''
     External API
+    Synchronize parameters
+
+    Input:  sess_id    (str)            Unique session id
+            best       (str)            Dict representing best peer
+            peers      (list)           List of dicts representing peers
+            parameters (list, optional) Nested list of lists containing model parameters
+            accuracy   (int, optional)  Accuracy associated with given model
+    Output: ok         (bool)           Flag indicating that sess importation was set in cache correctly
+    '''
+    def __synchronize_parameters(self, sess_id, best, peers, sender, parameters=[], accuracy=0):
+        # Get log
+        log_name = ujson.loads(self.cache.get(sess_id))["log"]
+        log, log_path = utils.log(self.log_dir, log_name)
+        log.info('api:synchronize_parameters')
+
+        # Remove itself from its own peer list
+        for i, p in enumerate(peers):
+            if p['host'] == self.me['host']:
+                peers.pop(i)
+                break
+
+        ok = False
+        peers.append(sender)
+
+        # If not explicitely given parameters and accuracy, retrieve parameters from the specified best peer
+        if len(parameters) == 0:
+            # If my parameters do not have the best validation accuracy
+            best_params = None
+            sess = {}
+
+            if best['host'] == self.me['host']:
+                sess = ujson.loads(self.cache.get('best'))
+                sess["party"] = peers
+                parameters = sess["parameters"]
+            else:
+                # Always only wanna synchronize with the local parameters of peer with the best parameters
+                # not their globally best parameters, just the parameters they're using for this hyperedge
+                resp = []
+
+                while len(resp) == 0:
+                    _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
+                    sleep(random())
+
+                ok = True
+                parameters = resp[0]
+                sess = {"parameters": parameters, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
+            
+            sess.update(ujson.loads(self.cache.get(sess_id)))
+            ok = self.cache.set(sess_id, ujson.dumps(sess))
+        else:
+            # Else parameters were explicitely given, so update with those
+            ok = self.update_model(sess_id, parameters=parameters, accuracy=accuracy, log=log)
+
+        # Start locally training
+        nn = net.DevNet(seed=self.seed, log=log)
+        nn.update_parameters(parameters)
+        Process(target=self.__train, args=(sess_id, log,)).start()
+
+        return ok
+
+
+    '''
+    External API
     API for getting this member's parameters
 
     Inputs: sess_id    (str)   Session id
@@ -880,6 +854,61 @@ class ParameterServer(object):
         except KeyError as e:
             self.log.exception('sess_id:{}'.format(sess_id))
             return 'invalid'
+
+
+    '''
+    External API 
+    Receive gradients from peers.
+
+    Inputs:  sess_id   (str)  Session id
+             sender    (dict) Alias of sender
+             gradients (list) Nested list of coordinate-gradient pairs
+             samples   (int)  Number of samples sending peer used to generate given gradients
+    Output:  ok        (bool) Bool indicating that session exists and values were updated
+    '''
+    def __share_grad(self, sess_id, sender, gradient_hash, gradients, samples):
+        if not self.cache.exists(sess_id):
+            print 'sessDNE sess_id: {}'.format(sess_id)
+            return False
+
+        sess = ujson.loads(self.cache.get(sess_id))
+
+        # Get log
+        try:
+            log, log_path = utils.log(self.log_dir, sess["log"])
+
+            if gradient_hash != hash(str(gradients)):
+                log.error('gradient hash incorrect')
+
+            sess['share_count'] = 1 + int(sess['share_count'])
+            sess['gradients'].append(gradients)
+            sess['share_train_sizes'] = samples + int(sess['share_train_sizes'])
+            self.cache.set(sess_id, ujson.dumps(sess))
+        except KeyError as e:
+            self.log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
+            return 'invalid'
+        except Exception as e:
+            raise Exception('Unexpected error: {}'.format(e))
+            return 'invalid'
+
+        return True
+
+
+    '''
+    External API
+
+    Only called by another peer from their allreduce() if they finished training the 
+    self.hyperepochs-amount of sessions they started
+
+    Input:  sender (string) Alias of peer
+    '''
+    def done(self, sender):
+        with self.done_lock:
+            peers = ujson.loads(self.cache.get('peer_status'))
+            i = next((i for (i, d) in enumerate(peers) if d['alias'] == sender), None)
+            peers[i]['done'] = 1
+            self.cache.set('peer_status', ujson.dumps(peers))
+
 
     '''
     Internal API
@@ -907,7 +936,7 @@ class ParameterServer(object):
             self.log.info('exiting ps')
             [os.kill(pid, signal.SIGTERM) for pid in ujson.loads(self.cache.get('sock_pids'))]
             sys.exit(0)
-        except Exception:
-            self.log.error('Error shutting down')
+        except Exception as e:
+            self.log.error(e)
             return False
         return True
