@@ -190,9 +190,6 @@ class ParameterServer(object):
             packet = ''
             # Process that maintains a hyperedge
             while 1:
-                with self.done_lock:
-                    if int(self.cache.get('done')) == 1: break
-
                 packet = conn.recv(4096)
 
                 if len(packet) == 0:
@@ -233,6 +230,8 @@ class ParameterServer(object):
         except ValueError as e:
             self.log.exception(e)
             conn.sendall('invalid protocol')
+        except Exception as e:
+            self.log.exception('other exception: {}'.format(e))
         finally:
             self.log.info('closing connection to {}'.format(addr))
             conn.close()
@@ -301,6 +300,7 @@ class ParameterServer(object):
     '''
     def __async_train(self):
         procs = [Process(target=self.__train_hyperedge) for i in range(0, self.hyperepochs)]
+        switch = False
 
         while 1:
             sleep(uniform(0,3))
@@ -309,7 +309,11 @@ class ParameterServer(object):
                 with self.count_lock:
                     if self.available():
                         try:
+                            self.done_lock.acquire()
                             procs.pop().start()
+                            self.cache.set('origin_edges', self.hyperepochs-len(procs))
+                            self.log.info('origin_edges: {}'.format(self.hyperepochs-len(procs)))
+                            self.done_lock.release()
                         except IndexError:
                             self.log.info('max hyperepochs')
             else:
@@ -318,11 +322,14 @@ class ParameterServer(object):
                     peers = ujson.loads(self.cache.get('peer_status'))
                     done_count = sum([int(p['done']) for p in peers])
 
-                    if len(peers) == done_count: 
+                    if not switch:
+                        self.log.debug('wtf bro?\n peers: {}, done_count: {}'.format(len(peers), done_count))
+                        switch = True
+
+                    if len(peers) == done_count:
                         self.cache.set('done', 1)
                         break
                         
-        self.log.debug('done status: len(peers): {}, done_count: {}'.format(len(peers), done_count))
         self.log.info('hypergraph complete')
 
 
@@ -332,7 +339,7 @@ class ParameterServer(object):
     '''
     def __train_hyperedge(self):
         start = time()
-        log, log_path = utils.log(self.log_dir, '{}-{}'.format(self.me['id'], utils.get_date()))
+        log, log_path = utils.log(self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.rand_string()))
         log.info('train_hyperedge')
 
         connected = False
@@ -344,10 +351,7 @@ class ParameterServer(object):
             sess_id = self.__init_session(log=log, log_path=log_path)
 
         log.info('session id: {}'.format(sess_id))
-
-        self.done_lock.acquire()
-        self.cache.set('origin_edges', int(self.cache.get('origin_edges'))+1)
-        self.done_lock.release()
+        self.log.debug('session id: {}'.format(sess_id))
 
         with self.count_lock:
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
@@ -377,6 +381,8 @@ class ParameterServer(object):
         if log == None:
             log, log_path = utils.log(self.log_dir, 'train-{}'.format(sess_id))
 
+        log.info('training...')
+
         # Setup variables for sharing gradients
         sess = ujson.loads(self.cache.get(sess_id))
 
@@ -391,7 +397,7 @@ class ParameterServer(object):
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], k=self.sparsity, sparsify=True)
-        self.__allreduce(sess_id, sess, multistep, sess['train_size'], log)
+        self.__allreduce(sess_id, sess, multistep, sess['train_size'], log=log)
 
         # Final validation
         # Retrieve gradients in session shared by peers
@@ -670,7 +676,7 @@ class ParameterServer(object):
             if len(resp) > 0:
                 peers.append(resp)
 
-        log.debug('type:{} peers: {}'.format(type(unique), unique))
+        log.debug('type:{} peers: {} sess: {}'.format(type(unique), unique, sess['id']))
 
         return peers
 
@@ -681,6 +687,7 @@ class ParameterServer(object):
     This is only called by the Train.train() at the end of local training.
 
     Input:  sess_id     (str)  Session id
+            sess        (dict) Session object
             gradients   (list) List of torch.FloatTensors
             sample_size (int)  Total number of samples used to train. Required 
                                to calculate the weighted contribution of this 
@@ -698,6 +705,7 @@ class ParameterServer(object):
 
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
+        log.info('waiting sync barrier')
         while 1:
             sess = ujson.loads(self.cache.get(sess_id))
             share_count = sess['share_count']
@@ -724,12 +732,13 @@ class ParameterServer(object):
             with self.done_lock:
                 if int(self.cache.get('origin_edges')) == self.hyperepochs:
                     self.cache.set('done', 1)
-                    log.info('broadcasting done')
 
                     # Broadcast to all peers that you're done
                     for send_to in self.peers:
                         Thread(target=self.pc.psend, args=(send_to['host'], send_to['port'], 
                                {"api": "done", "args": [self.me['alias']]})).start()
+
+        log.info('broadcasting done')
 
 
     '''
@@ -753,6 +762,7 @@ class ParameterServer(object):
 
                 return {}
             else:
+                log.info('starting hyperedge: {}'.format(sess_id))
                 # Increment hyperedge count
                 self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
@@ -878,7 +888,7 @@ class ParameterServer(object):
             log, log_path = utils.log(self.log_dir, sess["log"])
 
             if gradient_hash != hash(str(gradients)):
-                log.error('gradient hash incorrect')
+                log.error('gradient hash incorrect from {} for {}'.format(sender, sess_id))
 
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
@@ -900,9 +910,10 @@ class ParameterServer(object):
     Only called by another peer from their allreduce() if they finished training the 
     self.hyperepochs-amount of sessions they started
 
-    Input:  sender (string) Alias of peer
+    Input: sender (string) Alias of peer
     '''
     def done(self, sender):
+        self.log.debug('api:done from {}'.format(sender))
         with self.done_lock:
             peers = ujson.loads(self.cache.get('peer_status'))
             i = next((i for (i, d) in enumerate(peers) if d['alias'] == sender), None)

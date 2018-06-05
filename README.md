@@ -42,6 +42,14 @@ cd smpl
 bash start.sh
 ```
 
+#### Diagnose Runs
+```
+python session.py --check -pl
+
+If receiving issue about redis not importing even though it's installed, try updating conda:
+conda update -n base conda
+```
+
 
 #### Usage
 
