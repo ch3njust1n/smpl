@@ -156,6 +156,8 @@ class ParameterChannel(object):
     def send(self, host, port, msg):
         ok = False
         content = ''
+        api = msg['api']
+        self.log.debug('send to api: {}'.format(api))
 
         try:
             resp = ''
@@ -166,7 +168,6 @@ class ParameterChannel(object):
                 return False, ''
 
             sock = self.connections[addr]
-            api = msg['api']
             msg = self.format_msg(msg)
 
             try:
@@ -236,7 +237,7 @@ class ParameterChannel(object):
                 self.log.error('empty reply from {} for api: {}'.format(addr, api))
                 content = ''
         except Exception as e:
-            self.log.exception(str(e))
+            self.log.exception('api: {} exception: {}'.format(api, str(e)))
 
         return ok, content
 
@@ -245,19 +246,22 @@ class ParameterChannel(object):
     Wraper for send() to persistently, hence psend, retry until message is successfully sent.
     This should be called in a Thread or Process so that it does not tie up the initiating process.
 
-    Input:  host (string) IP address
-            port (int) Port number
-            msg (dict) API function call and parameters
-    Output: ok (bool)
+    Input:  host    (string) IP address
+            port    (int)    Port number
+            msg     (dict)   API function call and parameters
+    Output: ok      (bool)
             content (dict)
     '''
     def psend(self, host, port, msg):
-        ok = False
         resp = None
+        ok = False
 
-        while not ok:
-            sleep(random())
+        self.log.info('calling api: {}'.format(msg['api']))
+
+        while resp == None:
             ok, resp = self.send(host, port, msg)
+
+        self.log.info('called {}'.format(msg['api']))
 
         return ok, resp
 

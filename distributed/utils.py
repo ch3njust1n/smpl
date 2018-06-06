@@ -61,7 +61,7 @@ Get current date and time
 Output: (string) Formatted current date and time
 '''
 def get_date():
-    return strftime("%Y-%m-%d-%H-%M-%S", gmtime())
+    return strftime("%Y-%m-%d-%H-%M-%S-{}".format(rand_string()), gmtime())
 
 
 '''

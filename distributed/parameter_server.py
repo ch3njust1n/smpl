@@ -259,6 +259,7 @@ class ParameterServer(object):
         elif api == 'share_grad':
             return self.__share_grad(*args)
         elif api == 'done':
+            self.log.debug('calling api done()')
             return self.done(*args)
         else:
             self.log.error('api:{}, args:{}'.format(api, args))
@@ -339,7 +340,7 @@ class ParameterServer(object):
     '''
     def __train_hyperedge(self):
         start = time()
-        log, log_path = utils.log(self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.rand_string()))
+        log, log_path = utils.log(self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.get_date()))
         log.info('train_hyperedge')
 
         connected = False
@@ -444,6 +445,7 @@ class ParameterServer(object):
 
             if count > 0:
                 self.cache.set('curr_edges', count-1)
+
             log.debug('hyperedge complete\tcurr_edges:{}\thyperepochs: {}'.format(count, total))
 
 
@@ -514,9 +516,9 @@ class ParameterServer(object):
         args = []
 
         if best['alias'] != sess['me']['alias']:
-            ok, model = self.pc.send(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
+            ok, model = self.pc.psend(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
 
-            if len(model) == 0:
+            if len(model) == 0 or len(model[0]) == 0:
                 return ''
 
             args = [sess_id, best, peers[:], self.me]
@@ -734,11 +736,17 @@ class ParameterServer(object):
                     self.cache.set('done', 1)
 
                     # Broadcast to all peers that you're done
-                    for send_to in self.peers:
-                        Thread(target=self.pc.psend, args=(send_to['host'], send_to['port'], 
-                               {"api": "done", "args": [self.me['alias']]})).start()
+                    log.info('broadcasting done')
 
-        log.info('broadcasting done')
+                    msgs = []
+                    for send_to in self.peers:
+                        t = Thread(target=self.pc.psend, args=(send_to['host'], send_to['port'], {"api": "done", "args": [self.me['alias']]}))
+                        msgs.append(t)
+                        t.start()
+
+                    for t in msgs: t.join()
+
+                    log.info('broadcasted')
 
 
     '''
@@ -819,7 +827,7 @@ class ParameterServer(object):
                 resp = []
 
                 while len(resp) == 0:
-                    _, resp = self.pc.send(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
+                    _, resp = self.pc.psend(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
                     sleep(random())
 
                 ok = True
@@ -849,21 +857,22 @@ class ParameterServer(object):
             accuracy   (float) Parameter accuracy or -1 if cannot load parameters
     '''
     def get_parameters(self, sess_id):
-        try:
-            log_name = ujson.loads(self.cache.get(sess_id))["log"]
-            log, log_path = utils.log(self.log_dir, log_name)
-            log.info('api:get_parameters sess_id: {}'.format(sess_id))
+        if not self.cache.exists(sess_id):
+            print 'sessDNE sess_id: {}'.format(sess_id)
+            return [], -1
 
-            model = ujson.loads(self.cache.get(sess_id))
+        log_name = ujson.loads(self.cache.get(sess_id))["log"]
+        log, log_path = utils.log(self.log_dir, log_name)
+        log.info('api:get_parameters sess_id: {}'.format(sess_id))
 
-            if model == None:
-                return [], -1
+        model = ujson.loads(self.cache.get(sess_id))
 
-            # CALL DEEP GRADIENT COMPRESSION HERE
-            return model['parameters'], model['accuracy']
-        except KeyError as e:
-            self.log.exception('sess_id:{}'.format(sess_id))
-            return 'invalid'
+        if model == None:
+            return [], -2
+
+        # CALL DEEP GRADIENT COMPRESSION HERE
+        return model['parameters'], model['accuracy']
+
 
 
     '''

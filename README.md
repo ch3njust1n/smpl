@@ -46,8 +46,7 @@ bash start.sh
 ```
 python session.py --check -pl
 
-If receiving issue about redis not importing even though it's installed, try updating conda:
-conda update -n base conda
+If receiving issue about redis not importing even though it's installed, try deactivating and reactivating environment
 ```
 
 
