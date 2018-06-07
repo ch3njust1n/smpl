@@ -10,6 +10,8 @@ import numpy as np
 from subprocess import PIPE, Popen
 from time import gmtime, strftime
 from sys import getsizeof
+from random import choice
+from string import ascii_uppercase, digits
 
 
 '''
@@ -59,7 +61,18 @@ Get current date and time
 Output: (string) Formatted current date and time
 '''
 def get_date():
-    return strftime("%Y-%m-%d-%H-%M-%S", gmtime())
+    return strftime("%Y-%m-%d-%H-%M-%S-{}".format(rand_string()), gmtime())
+
+
+'''
+Get a random string
+
+Input:  size  (int)    Length of string
+        chars (string) String of possible characters
+Output:       (string) Random string composed of chars of length size
+'''
+def rand_string(size=6, chars=ascii_uppercase + digits):
+    return ''.join(choice(chars) for _ in range(size))
 
 
 '''
