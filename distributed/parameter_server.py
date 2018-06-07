@@ -301,7 +301,6 @@ class ParameterServer(object):
     '''
     def __async_train(self):
         procs = [Process(target=self.__train_hyperedge) for i in range(0, self.hyperepochs)]
-        switch = False
 
         while 1:
             sleep(uniform(0,3))
@@ -323,12 +322,7 @@ class ParameterServer(object):
                     peers = ujson.loads(self.cache.get('peer_status'))
                     done_count = sum([int(p['done']) for p in peers])
 
-                    if not switch:
-                        self.log.debug('wtf bro?\n peers: {}, done_count: {}'.format(len(peers), done_count))
-                        switch = True
-
                     if len(peers) == done_count:
-                        self.cache.set('done', 1)
                         break
                         
         self.log.info('hypergraph complete')
@@ -730,10 +724,13 @@ class ParameterServer(object):
     def broadcast(self, sess, log=None):
         # Check if this is the last hyperedge spawned by this ParameterServer
         # and set status indicating that all spawned hyperedges successfully finished
+        log.debug('type: {}, done: {}'.format(sess['type'], int(self.cache.get('done'))))
         if sess['type'] == 1 and int(self.cache.get('done')) == 0:
             with self.done_lock:
-                if int(self.cache.get('origin_edges')) == self.hyperepochs:
+                orig = int(self.cache.get('origin_edges'))
+                if orig == self.hyperepochs:
                     self.cache.set('done', 1)
+                    log.debug('origin: {} == {}'.format(orig, self.hyperepochs))
 
                     # Broadcast to all peers that you're done
                     log.info('broadcasting done')
