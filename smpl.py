@@ -38,8 +38,8 @@ def main():
     parser.add_argument('--eth', type=str, default='ens3', help='Peers\' ethernet interface (default: ens3)')
     parser.add_argument('--flush', '-f', type=str2bool, default=True, help='Clear all parameters from previous \
                         sessions')
-    parser.add_argument('--hyperepochs', '-e', type=int, default=5, help='Total number of hyperepochs \
-                        across all cliques for this peer (default: 5)')
+    parser.add_argument('--hyperepochs', '-e', type=int, default=1, help='Total number of hyperepochs \
+                        across all cliques for this peer (default: 1)')
     parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
     parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate e.g i = 10^(-i)')
@@ -61,8 +61,8 @@ def main():
 
     # Launch parameter server
     try:
-        ps = ParameterServer(args)
-        # signal.signal(signal.SIGINT, ps.force_stop)
+        if args.hyperepochs > 0:
+            ParameterServer(args)
     except KeyboardInterrupt:
         pass
 
