@@ -173,13 +173,14 @@ class Network(nn.Module):
     This function adds gradients to specific coordinates in layer index.
     This should only be used after back-propagation.
 
-    Input:  index (int) Integer index into the network.parameters() 
-                    e.g. 0 
-            coords (list) Nested list containing lists of coordinate gradient pairs
-                    e.g. [[[0, 0, 0], -0.4013189971446991], [[0, 0, 1], 0.4981425702571869]]
-            avg (int, optional)
+    Input:  index  (int)             Integer index into the network.parameters() e.g. 0 
+            coords (list)            Nested list containing lists of coordinate gradient pairs
+                                     e.g. [[[0, 0, 0], -0.4013189971446991], [[0, 0, 1], 0.4981425702571869]]
+            lr     (float, optional) Learning rate
+            avg    (int, optional)   Averaging factor
+
     '''
-    def add_coordinates(self, index, coords, avg=1):
+    def add_coordinates(self, index, coords, lr, avg=1):
         
         cd = []
         gd = []
@@ -209,7 +210,7 @@ class Network(nn.Module):
 
         # update parameters with gradients at particular coordinates
         grads = sparse.FloatTensor(i.t(), v, Size(s)).to_dense()
-        params[index].data.add_(grads) # Commenting out for now. Refer to issue #48
+        params[index].data.add_(-lr*grads) # Commenting out for now. Refer to issue #48
 
 
     '''
@@ -223,7 +224,7 @@ class Network(nn.Module):
             e.g. [[[0, 0, 0], 0.23776602745056152], [[0, 0, 1], -0.09021180123090744], [[1, 0, 0], 0.10222198069095612]]
            avg (int, optional)
     '''
-    def add_batched_coordinates(self, coords, avg=1):
+    def add_batched_coordinates(self, coords, lr=1, avg=1):
         self.log.debug('adding coordinates')
         num_procs = cpu_count()
         self.share_memory()
@@ -242,7 +243,7 @@ class Network(nn.Module):
 
         # update parameters in parallel
         for k in params_coords.keys():
-            p = Process(target=self.add_coordinates, args=(k, params_coords[k], avg,))
+            p = Process(target=self.add_coordinates, args=(k, params_coords[k], lr, avg,))
             p.start()
             processes.append(p)
 
