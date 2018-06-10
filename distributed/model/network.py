@@ -181,14 +181,10 @@ class Network(nn.Module):
     '''
     def add_coordinates(self, index, coords, avg=1):
         
-        # get corresponding parameters
-        params = [p for p in self.parameters()]
-        p = params[index].data
-
         cd = []
         gd = []
         
-        # extract coordinate-gradient pairs and combine gradients at the same coordiante
+        # extract coordinate-gradient pairs and combine gradients at the same coordinate
         for c in coords:
             point = c[0][1:]
             c[1] /= avg
@@ -199,10 +195,13 @@ class Network(nn.Module):
                 cd.append(point)
                 gd.append(c[1])
 
+        # get corresponding parameters
+        params = [p for p in self.parameters()]
+
         # create coordinate/index tensor i, and value tensor v
         i = LongTensor(cd)
         v = FloatTensor(gd)
-        s = list(p.size())
+        s = list(params[index].size())
 
         # ensure that size has two coordinates e.g. prevent cases like (2L,)
         if len(s) == 1:
@@ -210,7 +209,7 @@ class Network(nn.Module):
 
         # update parameters with gradients at particular coordinates
         grads = sparse.FloatTensor(i.t(), v, Size(s)).to_dense()
-        # params[index].grad.data += grads # Commenting out for now. Refer to issue #48
+        params[index].data.add_(grads) # Commenting out for now. Refer to issue #48
 
 
     '''

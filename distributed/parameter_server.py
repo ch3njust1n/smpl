@@ -303,7 +303,7 @@ class ParameterServer(object):
         procs = [Process(target=self.__train_hyperedge) for i in range(0, self.hyperepochs)]
 
         while 1:
-            sleep(uniform(0,3))
+            sleep(uniform(3,5))
             
             if len(procs) > 0:
                 with self.count_lock:
@@ -389,6 +389,7 @@ class ParameterServer(object):
 
         # Update session model rank
         sess = ujson.loads(self.cache.get(sess_id))
+        log.info('acc before allreduce: {}'.format(sess["accuracy"]))
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], k=self.sparsity, sparsify=True)
@@ -398,11 +399,15 @@ class ParameterServer(object):
         # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
         sess['train_size'] += sess['share_train_sizes']
+        before_params = hash(str([x.data.tolist() for x in nn.parameters()]))
         nn.add_batched_coordinates(sess['gradients'], sess['train_size'])
+        after_params = hash(str([x.data.tolist() for x in nn.parameters()]))
+        log.debug('defo updated: {}'.format(before_params != after_params))
 
         # Validate model accuracy
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
+        log.info('acc after allreduce: {}'.format(sess["accuracy"]))
         sess["done"] = True
         self.cache.set(sess_id, ujson.dumps(sess))
 
