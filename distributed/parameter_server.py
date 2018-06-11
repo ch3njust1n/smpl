@@ -42,6 +42,7 @@ class ParameterServer(object):
         self.epsilon        = args.epsilon
         self.eth            = args.eth
         self.hyperepochs    = args.hyperepochs
+        self.lr             = args.learning_rate
         self.log_freq       = args.log_freq
         self.name           = args.name
         self.parallel       = args.local_parallel
@@ -303,7 +304,7 @@ class ParameterServer(object):
         procs = [Process(target=self.__train_hyperedge) for i in range(0, self.hyperepochs)]
 
         while 1:
-            sleep(uniform(0,3))
+            sleep(uniform(3,5))
             
             if len(procs) > 0:
                 with self.count_lock:
@@ -389,6 +390,7 @@ class ParameterServer(object):
 
         # Update session model rank
         sess = ujson.loads(self.cache.get(sess_id))
+        log.info('acc before allreduce: {}'.format(sess["accuracy"]))
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], k=self.sparsity, sparsify=True)
@@ -398,15 +400,18 @@ class ParameterServer(object):
         # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
         sess['train_size'] += sess['share_train_sizes']
-        nn.add_batched_coordinates(sess['gradients'], sess['train_size'])
+        nn.add_batched_coordinates(sess['gradients'], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
+        log.info('acc after allreduce: {}'.format(sess["accuracy"]))
         sess["done"] = True
         self.cache.set(sess_id, ujson.dumps(sess))
 
-        self.cleanup(sess_id, sess, log)
+        # compare recently trained hyperedge model with current best
+        self.update_model('best', session=sess_id, log=log)
+        self.cleanup(sess_id, sess, log=log)
         self.broadcast(sess, log=log)
 
         return sess
@@ -423,9 +428,7 @@ class ParameterServer(object):
            log     (Logger, optional) Session log
     '''
     def cleanup(self, sess_id, sess, log=None):
-        # compare recently trained hyperedge model with current best
-        ok = self.update_model('best', session=sess_id, log=log)
-
+        
         # clean up parameter cache and gradient queue
         if not self.dev:
             log.debug('deleting {}'.format(sess_id))
@@ -517,6 +520,7 @@ class ParameterServer(object):
 
             args = [sess_id, best, peers[:], self.me]
         else:
+            log.debug('mybest')
             model = ujson.loads(self.cache.get('best'))
             # send sess_id, parameters, and model accuracy to all peers
             args = [sess_id, best, peers[:], self.me, model[0], model[1]]
@@ -548,7 +552,7 @@ class ParameterServer(object):
     Internal API
     Update the accuracy and parameters of a session
 
-    Input:  sess_id    (str)              Session id
+    Input:  sess_id    (str)              Id of session to be updated
             session    (string, optional) Session id with updated values
             parameters (list, optional)   Model parameters represented in a list of lists
             accuracy   (float, optional)  Corresponding model accuracy
@@ -556,8 +560,11 @@ class ParameterServer(object):
     Output: ok         (bool)             Flag indicating if model was updated
     '''
     def update_model(self, sess_id, session='', parameters=[], accuracy=-1, log=None):
-        log.info('updating model id: {}'.format(sess_id))
+        if not self.cache.exists(sess_id):
+            return False
+
         sess = ujson.loads(self.cache.get(sess_id))
+        # accuracy = sess['accuracy'] if accuracy == -1 else accuracy
 
         if len(session) > 0:
             update = ujson.loads(self.cache.get(session))
@@ -569,11 +576,13 @@ class ParameterServer(object):
             sess['accuracy'] = update['accuracy']
             sess['val_size'] = update['val_size']
             sess['train_size'] = update['train_size']
+            log.debug('{} target acc: {}, {} source acc: {}'.format(sess_id, sess['accuracy'], session, update['accuracy']))
         else:
             if sess_id == 'best' and sess['accuracy'] > accuracy:
                 return False
             sess['parameters'] = parameters
             sess['accuracy'] = accuracy
+            log.debug('updated best2')
 
         return self.cache.set(sess_id, ujson.dumps(sess))
 
@@ -892,9 +901,6 @@ class ParameterServer(object):
         # Get log
         try:
             log, log_path = utils.log(self.log_dir, sess["log"])
-
-            if gradient_hash != hash(str(gradients)):
-                log.error('gradient hash incorrect from {} for {}'.format(sender, sess_id))
 
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)

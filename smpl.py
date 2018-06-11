@@ -38,11 +38,11 @@ def main():
     parser.add_argument('--eth', type=str, default='ens3', help='Peers\' ethernet interface (default: ens3)')
     parser.add_argument('--flush', '-f', type=str2bool, default=True, help='Clear all parameters from previous \
                         sessions')
-    parser.add_argument('--hyperepochs', '-e', type=int, default=1, help='Total number of hyperepochs \
-                        across all cliques for this peer (default: 1)')
+    parser.add_argument('--hyperepochs', '-e', type=int, default=10, help='Total number of hyperepochs \
+                        across all cliques for this peer (default: 10)')
     parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
-    parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate e.g i = 10^(-i)')
+    parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate')
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file.')
