@@ -53,7 +53,7 @@ class Train(DevTrainer):
     def train(self):
         h = hash(str([x.data.tolist() for x in self.network.parameters()]))
         self.log.debug('TR eps param hash: {}'.format(h))
-
+        batch_idx = 0
         for ep in range(0, self.epochs):
             self.network.train()
             ep_loss = 0
@@ -70,12 +70,12 @@ class Train(DevTrainer):
 
                 self.optimizer.step()
                 self.validations.append(self.validate())
-                break
+                
             self.log_epoch(self.pid, ep, loss, batch_idx, batch_size)
             self.ep_losses.append(ep_loss/self.num_train_batches)
             
             i = hash(str([x.data.tolist() for x in self.network.parameters()]))
-            self.log.debug('TR trained: {}'.format(h != i))
+            self.log.debug('TR trained: {} batch_idx: {}'.format(h != i, batch_idx))
 
             # Must call to share train size and 
             # validation size with parameter server

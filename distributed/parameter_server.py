@@ -414,7 +414,6 @@ class ParameterServer(object):
         # Validate model accuracy
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
-        log.info('acc after allreduce: {}'.format(sess["accuracy"]))
         sess["done"] = True
         self.cache.set(sess_id, ujson.dumps(sess))
 
