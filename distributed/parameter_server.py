@@ -387,11 +387,7 @@ class ParameterServer(object):
 
         # Each session should create its own model
         nn = net.DevNet(seed=self.seed, log=log)
-        # a = hash(str([x.data.tolist() for x in nn.parameters()]))
         nn.update_parameters(sess['parameters'])
-        b = hash(str([x.data.tolist() for x in nn.parameters()]))
-        log.debug('param hash: {}'.format(b))
-        # log.debug('were parameters updated? {}'.format(a != b))
 
         self.__local_train(sess_id, nn, log)
 
@@ -408,8 +404,6 @@ class ParameterServer(object):
         sess = ujson.loads(self.cache.get(sess_id))
         sess['train_size'] += sess['share_train_sizes']
         nn.add_batched_coordinates(sess['gradients'], lr=self.lr, avg=sess['train_size'])
-        # c = hash(str([x.data.tolist() for x in nn.parameters()]))
-        # log.debug('were parameters trained? {}'.format(a != c))
 
         # Validate model accuracy
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
@@ -523,17 +517,14 @@ class ParameterServer(object):
             model = ujson.loads(self.cache.get('best'))
             parameters = model["parameters"]
             accuracy = model["accuracy"]
-            log.debug('initiating with best: {}'.format(accuracy))
+
         my_best = dict(self.me)
         my_best['accuracy'] = accuracy
 
         all_peers.append(my_best)
         all_peers = sorted(all_peers, key=lambda x: x['accuracy'], reverse=True)
-        log.debug('accuracies: {}'.format([x['accuracy'] for x in all_peers]))
         best = all_peers[0] if random() <= self.epsilon else all_peers[randint(0, len(all_peers)-1)]
         
-        log.debug('best: {}, me: {}'.format(best['alias'], self.me['alias']))
-
         # request parameters from member with highest accuracy
         if best['alias'] != sess['me']['alias']:
             ok, model = self.pc.psend(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
@@ -545,14 +536,11 @@ class ParameterServer(object):
             parameters = model[0]
             accuracy = model[1]
             args = [sess_id, best, peers[:], self.me]
-            log.debug('get peer\'s best: {}'.format(accuracy))
         else:
             # send sess_id, parameters, and model accuracy to all peers
             args = [sess_id, best, peers[:], self.me, parameters, accuracy]
-            log.debug('mybest: {}'.format(accuracy))
 
         try:
-            log.debug('setting acc {}'.format(accuracy))
             # save parameters so can calculate difference (gradient) after training
             self.cache.set(sess_id, ujson.dumps({"parameters": parameters, "accuracy": accuracy, "val_size": 0, 
                                                 "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
@@ -754,8 +742,6 @@ class ParameterServer(object):
             if len(resp) > 0:
                 peers.append(resp)
 
-        log.debug('type:{} peers: {} sess: {}'.format(type(unique), unique, sess['id']))
-
         return peers
 
 
@@ -786,15 +772,13 @@ class ParameterServer(object):
 
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
-        log.info('waiting sync barrier')
         while 1:
             sess = ujson.loads(self.cache.get(sess_id))
             share_count = sess['share_count']
 
             if int(share_count) == len(sess['party']): break
             if int(share_count) > len(sess['party']):
-                log.error('share_count: {} > sess[party]: {}'.format(int(share_count), len(sess['party'])))
-                raise Exception('share count cannot be greater than total party size')
+                log.error('share count ({}) cannot be greater than total party size ({})'.format(int(share_count), len(sess['party'])))
             sleep(random())
 
         log.info('done sync barrier')
@@ -809,16 +793,13 @@ class ParameterServer(object):
     def broadcast(self, sess, log=None):
         # Check if this is the last hyperedge spawned by this ParameterServer
         # and set status indicating that all spawned hyperedges successfully finished
-        log.debug('type: {}, done: {}'.format(sess['type'], int(self.cache.get('done'))))
         if sess['type'] == 1 and int(self.cache.get('done')) == 0:
             with self.done_lock:
                 orig = int(self.cache.get('origin_edges'))
                 if orig == self.hyperepochs:
                     self.cache.set('done', 1)
-                    log.debug('origin: {} == {}'.format(orig, self.hyperepochs))
 
                     # Broadcast to all peers that you're done
-                    log.info('broadcasting done')
 
                     msgs = []
                     for send_to in self.peers:
@@ -828,7 +809,7 @@ class ParameterServer(object):
 
                     for t in msgs: t.join()
 
-                    log.info('broadcasted')
+                    log.info('broadcasting complete')
 
 
     '''

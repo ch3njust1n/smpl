@@ -142,18 +142,14 @@ class Network(nn.Module):
         gradients = []
 
         if isinstance(network, Network):
-            self.log.debug('multistep type:Network')
             gradients = [b-a for (b, a) in zip(sself.get_parameters(reference=True), network.parameters())]
         elif isinstance(network, list) and len(network) > 0:
             if isinstance(network[0], FloatTensor):
-                self.log.debug('multistep type:FloatTensor')
                 gradients = [b-a for (b, a) in zip(self.get_parameters(reference=True), network)]
             elif isinstance(network[0], list):
-                self.log.debug('multistep type:list')
                 gradients = [b-FloatTensor(a) for (b, a) in zip(self.get_parameters(reference=True), network)]
         else:
-            self.log.debug('multistep error')
-            raise Exception('Error: {} type not supported'.format(type(network)))
+            self.log.debug('Error: {} type not supported'.format(type(network)))
 
         return pt.largest_k(gradients, k=k) if sparsify else [g.data.tolist() for g in gradients] if tolist else gradients
 
@@ -225,7 +221,6 @@ class Network(nn.Module):
            avg (int, optional)
     '''
     def add_batched_coordinates(self, coords, lr=1, avg=1):
-        self.log.debug('adding coordinates')
         num_procs = cpu_count()
         self.share_memory()
         processes = []
@@ -259,7 +254,6 @@ class DevNet(Network):
     def __init__(self, seed, log):
         super(DevNet, self).__init__(seed=seed, log=log)
         manual_seed(seed)
-        self.loss = F.nll_loss
         self.fc1 = nn.Linear(784, 10)
 
 
@@ -272,7 +266,6 @@ class DevNeuron(Network):
     def __init__(self, seed, log):
         super(DevNeuron, self).__init__(seed=seed, log=log)
         manual_seed(seed)
-        self.loss = F.nll_loss
         self.fc1 = nn.Linear(2, 1)
 
 

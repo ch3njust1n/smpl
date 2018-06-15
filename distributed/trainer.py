@@ -85,17 +85,18 @@ class Trainer(object):
 
 
     '''
-    Input: pid        (int)
-           ep         (int)
-           loss       (tensor)
-           batch_idx  ()
-           batch_size ()
+    Log epoch information
+
+    Input: pid        (int)    Process id
+           ep         (int)    Current epoch
+           loss       (tensor) Loss value of epoch ep
+           batch_idx  (int)    Batch index
+           batch_size (int)    Batch size
     '''
     def log_epoch(self, pid, ep, loss, batch_idx, batch_size):
-        if batch_idx % self.log_interval == 0:
-            self.log.info('pid: {}\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
-                          pid, ep, batch_idx * batch_size, self.train_size,
-                          100. * batch_idx / self.train_size, loss.data[0]))
+        self.log.info('pid: {}\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
+                      pid, ep, batch_idx * batch_size, self.train_size,
+                      100. * batch_idx / self.train_size, loss.data[0]))
 
 
 
