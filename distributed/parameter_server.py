@@ -59,6 +59,7 @@ class ParameterServer(object):
         self.__clear_port()
 
         # Locks
+        self.best_lock = Lock()
         self.count_lock = Lock()
         self.done_lock = Lock()
         self.sock_lock = Lock()
@@ -109,8 +110,9 @@ class ParameterServer(object):
         # Network() was named generically intentionally so that users can plug-and-play
         # Track best set of parameters. Equivalent of "global" params in central server model.
         # Stash this server's info
-        self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
-                                            "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()]}))
+        self.cache.set('best', ujson.dumps({"accuracy": 0.00, "val_size": 0, "train_size": 0, "log": self.log_path,
+                                            "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()],
+                                            "alias": self.me['alias']}))
         self.cache.set('server', ujson.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
         self.cache.set('curr_edges', 0)
         self.cache.set('hyperedges', 0)
@@ -410,7 +412,7 @@ class ParameterServer(object):
         self.cache.set(sess_id, ujson.dumps(sess))
 
         # compare recently trained hyperedge model with current best
-        self.update_model('best', session=sess_id, log=log)
+        self.update_best(sess_id, log=log)
         self.cleanup(sess_id, sess, log=log)
         self.broadcast(sess, log=log)
 
@@ -500,40 +502,51 @@ class ParameterServer(object):
 
         # if can't connect with other peers, respond indicating failure
         if len(peers) == 0:
+            self.kill_session(sess_id, peers)
             return ''
 
         # sort by accuracy in descending order and cache as current session
         # implement parameter synchronization strategies here
         # Note: Selecting based on best validation accuracy will lead to hyperedge collapse
-        peers = sorted(peers, key=lambda x: x['accuracy'], reverse=True)
-        best = peers[0] if random() <= self.epsilon else peers[randint(0, len(peers)-1)]
+        model = {}
+        args = []
+        all_peers = list(peers)
+        parameters = []
+        accuracy = -1
+
+        with self.best_lock:
+            model = ujson.loads(self.cache.get('best'))
+            parameters = model["parameters"]
+            accuracy = model["accuracy"]
+        my_best = dict(self.me)
+        my_best['accuracy'] = accuracy
+
+        all_peers.append(my_best)
+        all_peers = sorted(all_peers, key=lambda x: x['accuracy'], reverse=True)
+        best = all_peers[0] if random() <= self.epsilon else all_peers[randint(0, len(all_peers)-1)]
+        
+        log.debug('best: {}, me: {}'.format(best['alias'], self.me['alias']))
 
         # request parameters from member with highest accuracy
-        model = []
-        args = []
-
         if best['alias'] != sess['me']['alias']:
             ok, model = self.pc.psend(best['host'], best['port'], {"api": "get_parameters", "args": ['best']})
 
             if len(model) == 0 or len(model[0]) == 0:
+                self.kill_session(sess_id, peers)
                 return ''
 
+            parameters = model[0]
+            accuracy = model[1]
             args = [sess_id, best, peers[:], self.me]
+            log.debug('get peer\'s best')
         else:
             log.debug('mybest')
-            model = ujson.loads(self.cache.get('best'))
             # send sess_id, parameters, and model accuracy to all peers
-            args = [sess_id, best, peers[:], self.me, model[0], model[1]]
-
-        # Synchronize parameters of model with best validation accuracy
-        for i, send_to in enumerate(peers):
-            Thread(target=self.pc.psend, 
-                args=(send_to['host'], send_to['port'],
-                      {"api": "synchronize_parameters", "args": args},)).start()
+            args = [sess_id, best, peers[:], self.me, model["parameters"], model["accuracy"]]
 
         try:
             # save parameters so can calculate difference (gradient) after training
-            self.cache.set(sess_id, ujson.dumps({"parameters": model[0], "accuracy": model[1], "val_size": 0, 
+            self.cache.set(sess_id, ujson.dumps({"parameters": parameters, "accuracy": accuracy, "val_size": 0, 
                                                 "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
                                                 "log": log_path, "share_count": 0, "gradients": [], 
                                                 "share_train_sizes": 0, "train_batches": 0, "val_batches": 0,
@@ -543,48 +556,96 @@ class ParameterServer(object):
 
         if not self.cache.exists(sess_id):
             log.error('Error: key insertion failure {}'.format(sess_id))
-            raise Exception('Error: key insertion failure {}'.format(sess_id))
+            self.kill_session(sess_id, peers)
+            return ''
+
+        # Synchronize parameters of model with best validation accuracy
+        for i, send_to in enumerate(peers):
+            Thread(target=self.pc.psend, 
+                args=(send_to['host'], send_to['port'],
+                      {"api": "synchronize_parameters", "args": args},)).start()
 
         return sess_id
 
 
     '''
     Internal API
-    Update the accuracy and parameters of a session
+    Update a session object with multiple key-value pairs
 
-    Input:  sess_id    (str)              Id of session to be updated
-            session    (string, optional) Session id with updated values
-            parameters (list, optional)   Model parameters represented in a list of lists
-            accuracy   (float, optional)  Corresponding model accuracy
-            log        (Logger, optional) Session log
-    Output: ok         (bool)             Flag indicating if model was updated
+    Input:  sess_id (string) Session id
+            data    (dict)   Dictionary to extend session
+    Output: ok      (bool)   True if successfully updated the session, else False
     '''
-    def update_model(self, sess_id, session='', parameters=[], accuracy=-1, log=None):
-        if not self.cache.exists(sess_id):
-            return False
+    def extend_model(self, sess_id, data, log=None):
+        ok = False
+
+        if sess_id == 'best' or not self.cache.exists(sess_id):
+            log.error('invalid session id: {}'.format(sess_id))
+            return ok, {}
 
         sess = ujson.loads(self.cache.get(sess_id))
-        # accuracy = sess['accuracy'] if accuracy == -1 else accuracy
+        sess.update(data)
 
-        if len(session) > 0:
-            update = ujson.loads(self.cache.get(session))
+        return self.cache.set(sess_id, ujson.dumps(sess)), sess
 
-            if sess_id == 'best' and sess['accuracy'] > update['accuracy']:
-                return False
 
-            sess['parameters'] = update['parameters']
-            sess['accuracy'] = update['accuracy']
-            sess['val_size'] = update['val_size']
-            sess['train_size'] = update['train_size']
-            log.debug('{} target acc: {}, {} source acc: {}'.format(sess_id, sess['accuracy'], session, update['accuracy']))
-        else:
-            if sess_id == 'best' and sess['accuracy'] > accuracy:
-                return False
-            sess['parameters'] = parameters
-            sess['accuracy'] = accuracy
-            log.debug('updated best2')
+    '''
+    Internal API
+    Update the accuracy and parameters of a session. This function should not be used to update 
+    the best sessions
 
-        return self.cache.set(sess_id, ujson.dumps(sess))
+    Input:  sess_id (string)           Session id
+            key     (string)           Property to update or add
+            value   (string)           Corresponding key's value
+            log     (Logger, optional) Session log
+    Output: ok      (bool)             Flag indicating if model was updated
+    '''
+    def update_model(self, sess_id, key, value, log=None):
+        ok = False
+
+        if sess_id == 'best' or not self.cache.exists(sess_id):
+            log.error('invalid session id: {}'.format(sess_id))
+            return ok, {}
+
+        if key == None and value == None:
+            log.error('invalid key: {}, value: {}'.format(key, value))
+            return ok, {}
+
+        sess = ujson.loads(self.cache.get(sess_id))
+        sess[key] = value
+
+        return self.cache.set(sess_id, ujson.dumps(sess)), sess
+
+
+    '''
+    Internal API
+    Update the best model
+
+    Input:  sess_id (string)           Session id for session that will be used to update the target session
+            log     (Logger, optional) Session log
+    Output: ok      (bool)             Flag indicating if model was updated
+    '''
+    def update_best(self, sess_id, log=None):
+        ok = False
+
+        if not self.cache.exists(sess_id):
+            return ok, {}
+
+        best = ujson.loads(self.cache.get('best'))
+        update = ujson.loads(self.cache.get(sess_id))
+
+        if best['accuracy'] > update['accuracy']:
+            return ok, {}
+
+        best['accuracy'] = update['accuracy']
+        best['val_size'] = update['val_size']
+        best['parameters'] = update['parameters']
+        best['train_size'] = update['train_size']
+
+        with self.best_lock:
+            ok = self.cache.set('best', ujson.dumps(best))
+
+        return ok, best
 
 
     '''
@@ -702,11 +763,14 @@ class ParameterServer(object):
     def __allreduce(self, sess_id, sess, gradients, sample_size, log=None):
 
         # Async send gradients to all peers in hyperedge
-        for send_to in sess['party']:
-            log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
-            Thread(target=self.pc.psend, 
-                   args=(send_to['host'], send_to['port'], 
-                         {"api": "share_grad", "args": [sess_id, self.me['alias'], hash(str(gradients)), gradients, sample_size]})).start()
+        try:
+            for send_to in sess['party']:
+                log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
+                Thread(target=self.pc.psend, 
+                       args=(send_to['host'], send_to['port'], 
+                             {"api": "share_grad", "args": [sess_id, self.me['alias'], hash(str(gradients)), gradients, sample_size]})).start()
+        except KeyError as e:
+            log.error('error: {}, keys: {}'.format(e, sess.keys()))
 
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
@@ -753,6 +817,18 @@ class ParameterServer(object):
                     for t in msgs: t.join()
 
                     log.info('broadcasted')
+
+
+    '''
+    Internal API
+
+    Broadcast to pre-emptively end a session
+    Input:  sess_id (string) Session id
+            peers   (list)   List of peers in the corresponding session 
+    '''
+    def kill_session(self, sess_id, peers):
+        for send_to in peers:
+            Thread(target=self.pc.psend, args=(send_to['host'], send_to['port'], {"api": "preempt", "args": [sess_id]})).start()
 
 
     '''
@@ -816,6 +892,7 @@ class ParameterServer(object):
 
         ok = False
         peers.append(sender)
+        sess = {}
 
         # If not explicitely given parameters and accuracy, retrieve parameters from the specified best peer
         if len(parameters) == 0:
@@ -831,7 +908,6 @@ class ParameterServer(object):
                 # Always only wanna synchronize with the local parameters of peer with the best parameters
                 # not their globally best parameters, just the parameters they're using for this hyperedge
                 resp = []
-
                 while len(resp) == 0:
                     _, resp = self.pc.psend(best["host"], best["port"], {"api": "get_parameters", "args":[sess_id]})
                     sleep(random())
@@ -839,12 +915,17 @@ class ParameterServer(object):
                 ok = True
                 parameters = resp[0]
                 sess = {"parameters": parameters, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
-            
+
             sess.update(ujson.loads(self.cache.get(sess_id)))
             ok = self.cache.set(sess_id, ujson.dumps(sess))
         else:
             # Else parameters were explicitely given, so update with those
-            ok = self.update_model(sess_id, parameters=parameters, accuracy=accuracy, log=log)
+            ok, sess = self.extend_model(sess_id, {"accuracy": accuracy, "parameters": parameters, "party": peers}, log=log)
+
+        try:
+            log.debug('party: {}'.format(sess['party']))
+        except KeyError:
+            log.error('No party key, len(sess): {}'.format(len(sess)))
 
         # Start locally training
         nn = net.DevNet(seed=self.seed, log=log)
@@ -931,6 +1012,21 @@ class ParameterServer(object):
             i = next((i for (i, d) in enumerate(peers) if d['alias'] == sender), None)
             peers[i]['done'] = 1
             self.cache.set('peer_status', ujson.dumps(peers))
+
+
+    '''
+    External API
+
+    Preemptively end a session
+    Input:  sess_id (string) Session id
+    Output: ok      (bool)   True if curr_edges count was updated successfully
+    '''
+    def preempt(self, sess_id):
+        ok = False
+        with self.count_lock:
+            self.cache.delete(sess_id)
+            ok = self.cache.set('curr_edges', int(self.cache.get('curr_edges'))-1)
+        return ok
 
 
     '''
