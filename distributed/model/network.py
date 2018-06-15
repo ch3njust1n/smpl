@@ -137,7 +137,7 @@ class Network(nn.Module):
             tolist    (bool)  If True, return parameters as a nested list of lists
     Output: gradients (list)  A list of torch.FloatTensors representing the difference between the network parameters
     '''
-    def multistep_grad(self, network, k=0.8, sparsify=False, tolist=False):
+    def multistep_grad(self, network, k=1.0, sparsify=False, tolist=False):
         # MAY NEED TO MAKE b IN EACH OF THESES CASES A TENSOR e.g. b.data-a instead of b-a        
         gradients = []
 

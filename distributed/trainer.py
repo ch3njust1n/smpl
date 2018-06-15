@@ -5,7 +5,6 @@
 	Module for abstracting trainer classes
 '''
 
-from torch import manual_seed
 from torchvision import transforms
 from torch.autograd import Variable
 import torchvision.datasets as datasets
@@ -25,7 +24,7 @@ class Trainer(object):
         self.ep_losses         = []
         self.epochs            = 1
         self.log_interval      = 1
-        self.logger            = log
+        self.log               = log
         self.network           = network
         self.num_train_batches = 0
         self.num_val_batches   = 0
@@ -38,9 +37,6 @@ class Trainer(object):
         self.val_path          = os.path.join(data, 'val')
         self.val_size          = 0
         self.validations       = []
-
-        if self.seed != -1:
-            manual_seed(self.seed)
 
         pt.to_cuda(self.network, cuda=self.cuda)
 
@@ -83,7 +79,7 @@ class Trainer(object):
 
         test_loss /= self.val_size
         acc = 100. * correct / self.val_size
-        self.logger.info('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct, self.val_size, acc))
+        self.log.info('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct, self.val_size, acc))
 
         return acc
 
@@ -95,9 +91,9 @@ class Trainer(object):
            batch_idx  ()
            batch_size ()
     '''
-    def log(self, pid, ep, loss, batch_idx, batch_size):
+    def log_epoch(self, pid, ep, loss, batch_idx, batch_size):
         if batch_idx % self.log_interval == 0:
-            self.logger.info('pid: {}\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
+            self.log.info('pid: {}\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
                           pid, ep, batch_idx * batch_size, self.train_size,
                           100. * batch_idx / self.train_size, loss.data[0]))
 
@@ -111,13 +107,15 @@ class DistributedTrainer(Trainer):
         self.pid     = current_process().pid
         self.sess_id = sess_id
         self.cache   = cache
+        sess = ujson.loads(self.cache.get(sess_id))
+        self.log.debug('DT acc: {}'.format(sess['accuracy']))
 
 
     '''
     cache train set and validation set sizes, and final validation accuracy with parameter server
     '''
     def share(self):
-        self.logger.debug('train.share() sess_id:{}'.format(self.sess_id))
+        self.log.debug('train.share() sess_id:{}'.format(self.sess_id))
         sess = ujson.loads(self.cache.get(self.sess_id))
         sess['ep_losses'] = self.ep_losses
         sess['train_size'] = self.train_size

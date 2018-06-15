@@ -51,7 +51,9 @@ class Train(DevTrainer):
     losses   (list)    List of training losses
     '''            
     def train(self):
-        
+        h = hash(str([x.data.tolist() for x in self.network.parameters()]))
+        self.log.debug('TR eps param hash: {}'.format(h))
+
         for ep in range(0, self.epochs):
             self.network.train()
             ep_loss = 0
@@ -69,9 +71,12 @@ class Train(DevTrainer):
                 self.optimizer.step()
                 self.validations.append(self.validate())
                 break
-            self.log(self.pid, ep, loss, batch_idx, batch_size)
+            self.log_epoch(self.pid, ep, loss, batch_idx, batch_size)
             self.ep_losses.append(ep_loss/self.num_train_batches)
             
+            i = hash(str([x.data.tolist() for x in self.network.parameters()]))
+            self.log.debug('TR trained: {}'.format(h != i))
+
             # Must call to share train size and 
             # validation size with parameter server
             self.share()

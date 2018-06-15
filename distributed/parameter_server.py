@@ -383,10 +383,15 @@ class ParameterServer(object):
 
         # Setup variables for sharing gradients
         sess = ujson.loads(self.cache.get(sess_id))
+        log.debug('before training acc: {}'.format(sess['accuracy']))
 
         # Each session should create its own model
         nn = net.DevNet(seed=self.seed, log=log)
+        # a = hash(str([x.data.tolist() for x in nn.parameters()]))
         nn.update_parameters(sess['parameters'])
+        b = hash(str([x.data.tolist() for x in nn.parameters()]))
+        log.debug('param hash: {}'.format(b))
+        # log.debug('were parameters updated? {}'.format(a != b))
 
         self.__local_train(sess_id, nn, log)
 
@@ -403,6 +408,8 @@ class ParameterServer(object):
         sess = ujson.loads(self.cache.get(sess_id))
         sess['train_size'] += sess['share_train_sizes']
         nn.add_batched_coordinates(sess['gradients'], lr=self.lr, avg=sess['train_size'])
+        # c = hash(str([x.data.tolist() for x in nn.parameters()]))
+        # log.debug('were parameters trained? {}'.format(a != c))
 
         # Validate model accuracy
         conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
@@ -417,35 +424,6 @@ class ParameterServer(object):
         self.broadcast(sess, log=log)
 
         return sess
-
-
-    '''
-    Internal API
-
-    Update the best model on this parameter server, remove finished sessions from cache, 
-    and update variable counters
-
-    Input: sess_id (string)           Session id
-           sess    (dict)             Session object
-           log     (Logger, optional) Session log
-    '''
-    def cleanup(self, sess_id, sess, log=None):
-        
-        # clean up parameter cache and gradient queue
-        if not self.dev:
-            log.debug('deleting {}'.format(sess_id))
-            self.cache.delete(sess_id)
-
-        # increment total successful training epoches and hyperedges
-        with self.count_lock:
-            total = int(self.cache.get('hyperedges'))
-            self.cache.set('hyperedges', total+1)
-            count = int(self.cache.get('curr_edges'))
-
-            if count > 0:
-                self.cache.set('curr_edges', count-1)
-
-            log.debug('hyperedge complete\tcurr_edges:{}\thyperepochs: {}'.format(count, total))
 
 
     '''
@@ -478,10 +456,38 @@ class ParameterServer(object):
                 p.join()
         else:
             log.info('vanilla')
-            t = Train(conf)
-            t.train()
+            Train(conf).train()
 
         log.info('local ({} s)'.format(time()-start_time))
+
+
+    '''
+    Internal API
+
+    Update the best model on this parameter server, remove finished sessions from cache, 
+    and update variable counters
+
+    Input: sess_id (string)           Session id
+           sess    (dict)             Session object
+           log     (Logger, optional) Session log
+    '''
+    def cleanup(self, sess_id, sess, log=None):
+        
+        # clean up parameter cache and gradient queue
+        if not self.dev:
+            log.debug('deleting {}'.format(sess_id))
+            self.cache.delete(sess_id)
+
+        # increment total successful training epoches and hyperedges
+        with self.count_lock:
+            total = int(self.cache.get('hyperedges'))
+            self.cache.set('hyperedges', total+1)
+            count = int(self.cache.get('curr_edges'))
+
+            if count > 0:
+                self.cache.set('curr_edges', count-1)
+
+            log.debug('hyperedge complete\tcurr_edges:{}\thyperepochs: {}'.format(count, total))
 
 
     '''
@@ -518,11 +524,13 @@ class ParameterServer(object):
             model = ujson.loads(self.cache.get('best'))
             parameters = model["parameters"]
             accuracy = model["accuracy"]
+            log.debug('initiating with best: {}'.format(accuracy))
         my_best = dict(self.me)
         my_best['accuracy'] = accuracy
 
         all_peers.append(my_best)
         all_peers = sorted(all_peers, key=lambda x: x['accuracy'], reverse=True)
+        log.debug('accuracies: {}'.format([x['accuracy'] for x in all_peers]))
         best = all_peers[0] if random() <= self.epsilon else all_peers[randint(0, len(all_peers)-1)]
         
         log.debug('best: {}, me: {}'.format(best['alias'], self.me['alias']))
@@ -538,13 +546,14 @@ class ParameterServer(object):
             parameters = model[0]
             accuracy = model[1]
             args = [sess_id, best, peers[:], self.me]
-            log.debug('get peer\'s best')
+            log.debug('get peer\'s best: {}'.format(accuracy))
         else:
-            log.debug('mybest')
             # send sess_id, parameters, and model accuracy to all peers
-            args = [sess_id, best, peers[:], self.me, model["parameters"], model["accuracy"]]
+            args = [sess_id, best, peers[:], self.me, parameters, accuracy]
+            log.debug('mybest: {}'.format(accuracy))
 
         try:
+            log.debug('setting acc {}'.format(accuracy))
             # save parameters so can calculate difference (gradient) after training
             self.cache.set(sess_id, ujson.dumps({"parameters": parameters, "accuracy": accuracy, "val_size": 0, 
                                                 "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
@@ -631,10 +640,13 @@ class ParameterServer(object):
         if not self.cache.exists(sess_id):
             return ok, {}
 
-        best = ujson.loads(self.cache.get('best'))
+        with self.best_lock:
+            best = ujson.loads(self.cache.get('best'))
+            log.debug('before updating best: {}'.format(best['accuracy']))
+
         update = ujson.loads(self.cache.get(sess_id))
 
-        if best['accuracy'] > update['accuracy']:
+        if update['accuracy'] <= best['accuracy']:
             return ok, {}
 
         best['accuracy'] = update['accuracy']
@@ -643,6 +655,7 @@ class ParameterServer(object):
         best['train_size'] = update['train_size']
 
         with self.best_lock:
+            log.debug('after updating best: {}'.format(best['accuracy']))
             ok = self.cache.set('best', ujson.dumps(best))
 
         return ok, best
@@ -856,10 +869,13 @@ class ParameterServer(object):
                 # Increment hyperedge count
                 self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
-                record = ujson.loads(self.cache.get('best'))
+                record = {}
+                with self.best_lock:
+                    record = ujson.loads(self.cache.get('best'))
                 
                 me = dict(self.me)
                 me['accuracy'] = record['accuracy']
+                log.debug('initiating with best: {}'.format(me['accuracy']))
 
                 self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path,
                                                      "share_train_sizes": 0, "share_count": 0, 
@@ -901,9 +917,11 @@ class ParameterServer(object):
             sess = {}
 
             if best['host'] == self.me['host']:
-                sess = ujson.loads(self.cache.get('best'))
-                sess["party"] = peers
-                parameters = sess["parameters"]
+                with self.best_lock:
+                    sess = ujson.loads(self.cache.get('best'))
+                    sess["party"] = peers
+                    parameters = sess["parameters"]
+                    log.debug('synchronizing with my best: {}'.format(sess['accuracy']))
             else:
                 # Always only wanna synchronize with the local parameters of peer with the best parameters
                 # not their globally best parameters, just the parameters they're using for this hyperedge
