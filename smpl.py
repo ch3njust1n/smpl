@@ -20,7 +20,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Default host address (default: 0.0.0.0)')
-    parser.add_argument('--port', type=int, default=9888, help='Port number for GradientServer')
+    parser.add_argument('--port', type=int, default=9888, help='Port number for GradientServer (default: 9888)')
     parser.add_argument('--async_global', type=bool, default=True, help='Set for globally asynchronous training (default: True)')
     parser.add_argument('--async_mid', type=bool, default=True, help='Set for asynchronous training within hyperedges (default: True)')
     parser.add_argument('--async_local', type=bool, default=False, help='Set for asynchronous training on each peer (default: True)')
@@ -52,7 +52,7 @@ def main():
                         help='Directory to save trained model parameters to')
     parser.add_argument('--seed', type=int, default=randint(0,100), help='Random seed for dev only!')
     parser.add_argument('--shuffle', type=bool, default=True, help='True if data should be shuffled (default: True)')
-    parser.add_argument('--sparsity', type=percent, default=0.5, help='Parameter sharing sparsification level (default: 0.0)')
+    parser.add_argument('--sparsity', type=percent, default=1.0, help='Percentage of gradients to keep (default: 1.0)')
     parser.add_argument('--uniform', '-u', type=edge_size, default=2, help='Hyperedge size (default: 2)')
     parser.add_argument('--variety', type=int, default=1, 
                         help='Minimum number of new members required in order to enter into a new hyperedge. \
@@ -61,7 +61,7 @@ def main():
 
     # Launch parameter server
     try:
-        if args.hyperepochs > 0:
+        if args.hyperepochs > 0 or args.sparsity == 0:
             ParameterServer(args)
     except KeyboardInterrupt:
         pass

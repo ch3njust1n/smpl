@@ -19,7 +19,6 @@ from random import random
 from math import ceil
 from trainer import DistributedTrainer, DevTrainer
 
-
 # class Train(DistributedTrainer):
 class Train(DevTrainer):
 
@@ -34,7 +33,7 @@ class Train(DevTrainer):
         # Training settings
         self.batch_size = 8
         self.epochs = 1
-        self.log_interval = 100
+        self.log_interval = 500
         self.lr = 1
         self.momentum = 0.9
         self.optimizer = self.network.optimizer(self.network.parameters(), lr=self.lr)
@@ -51,7 +50,8 @@ class Train(DevTrainer):
     losses   (list)    List of training losses
     '''            
     def train(self):
-        
+        h = hash(str([x.data.tolist() for x in self.network.parameters()]))
+        batch_idx = 0
         for ep in range(0, self.epochs):
             self.network.train()
             ep_loss = 0
@@ -66,10 +66,12 @@ class Train(DevTrainer):
                 loss.backward()
                 ep_loss += loss.data.tolist()[0]
 
+                if batch_idx % self.log_interval == 0:
+                    self.log_epoch(self.pid, ep, loss, batch_idx, batch_size)
+
                 self.optimizer.step()
-                self.validations.append(self.validate())
-                break
-            self.log(self.pid, ep, loss, batch_idx, batch_size)
+
+            self.validations.append(self.validate())
             self.ep_losses.append(ep_loss/self.num_train_batches)
             
             # Must call to share train size and 

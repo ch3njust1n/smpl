@@ -62,7 +62,7 @@ Simultaneous Multi-Party Learning Training
 
 optional arguments:
 --host                  Default host address (default: 0.0.0.0)
---port                  Port number for GradientServer
+--port                  Port number for GradientServer (default: 9888)
 --async_global          Set for globally asynchronous training (default: True)
 --async_mid             Set for asynchronous training within hyperedges (default: True)
 --async_local           Set for asynchronous training on each peer (default: True)
