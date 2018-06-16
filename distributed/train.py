@@ -18,8 +18,6 @@ from itertools import count
 from random import random
 from math import ceil
 from trainer import DistributedTrainer, DevTrainer
-from torch.nn.functional import 
-
 
 # class Train(DistributedTrainer):
 class Train(DevTrainer):
@@ -33,9 +31,9 @@ class Train(DevTrainer):
         super(Train, self).__init__(*config)
 
         # Training settings
-        self.batch_size = 32
+        self.batch_size = 8
         self.epochs = 1
-        self.log_interval = 200
+        self.log_interval = 500
         self.lr = 1
         self.momentum = 0.9
         self.optimizer = self.network.optimizer(self.network.parameters(), lr=self.lr)
@@ -64,7 +62,7 @@ class Train(DevTrainer):
                 target = Variable(pt.to_cuda(target, cuda=self.cuda))
 
                 self.optimizer.zero_grad()
-                loss = nll_loss(self.network(data), target)
+                loss = self.network.loss(self.network(data), target)
                 loss.backward()
                 ep_loss += loss.data.tolist()[0]
 
@@ -76,8 +74,6 @@ class Train(DevTrainer):
             self.validations.append(self.validate())
             self.ep_losses.append(ep_loss/self.num_train_batches)
             
-            i = hash(str([x.data.tolist() for x in self.network.parameters()]))
-
             # Must call to share train size and 
             # validation size with parameter server
             self.share()

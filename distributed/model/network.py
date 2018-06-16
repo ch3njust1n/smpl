@@ -255,11 +255,12 @@ class DevNet(Network):
         super(DevNet, self).__init__(seed=seed, log=log)
         manual_seed(seed)
         self.fc1 = nn.Linear(784, 10)
+        self.loss = F.nll_loss
 
 
     def forward(self, x):
         x = x.view(-1, 784)
-        return F.log_softmax(self.fc1(x), dim=0)
+        return F.log_softmax(self.fc1(x), dim=1)
 
 
 class DevNeuron(Network):
@@ -267,6 +268,7 @@ class DevNeuron(Network):
         super(DevNeuron, self).__init__(seed=seed, log=log)
         manual_seed(seed)
         self.fc1 = nn.Linear(2, 1)
+        self.loss = F.nll_loss
 
 
     def forward(self, x):
