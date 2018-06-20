@@ -31,6 +31,7 @@ class ParameterServer(object):
         self.data       = args.data
         self.drop_last  = args.drop_last
         self.eth        = args.eth
+        self.log_level  = args.log_level
         self.party      = args.party
         self.seed       = args.seed
         self.shuffle    = args.shuffle
@@ -46,7 +47,7 @@ class ParameterServer(object):
         self.me = utils.get_me(self.peers, eth=self.eth)
 
         self.log_dir = os.path.join(os.getcwd(), 'logs')
-        self.log, self.log_path = utils.log(self.log_dir, 'ps{}'.format(self.me['id']), level=args.log_level)
+        self.log, self.log_path = utils.log(self.log_dir, 'ps{}'.format(self.me['id']), level=self.log_level)
         self.cache              = redis.StrictRedis(host='localhost', port=6379, db=0)
 
         try:
@@ -54,6 +55,9 @@ class ParameterServer(object):
         except Exception:
             self.log.exception("Redis isn't running. try `sudo systemctl start redis`")
             exit(0)
+
+        if args.flush:
+            self.flush()
 
         # Distributed training parameters
         if mode == 0:
@@ -104,15 +108,6 @@ class ParameterServer(object):
                     torch.cuda.manual_seed_all(self.seed)
                 else:
                     torch.manual_seed(self.seed)
-
-            try:
-                self.cache.ping()
-            except Exception:
-                self.log.exception("Redis isn't running. try `sudo systemctl start redis`")
-                exit(0)
-
-            if args.flush:
-                self.flush()
 
             # Setup parameter cache
             # Network() was named generically intentionally so that users can plug-and-play
