@@ -14,6 +14,7 @@ from distributed.parameter_server import ParameterServer
 from multiprocessing import Process, cpu_count
 from random import random, randint
 import time, argparse, signal, os
+import logging
 
 
 def main():
@@ -44,16 +45,17 @@ def main():
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
     parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate (default: 1e-3)')
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training (default: 100)')
+    parser.add_argument('--log_level', type=int, default=logging.DEBUG, help='Logging level. Set to 100 to supress all logs.')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment (default: MNIST)')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file. (default: party.json)')
-    parser.add_argument('--regular', '-r', default=2, help='Maximum number of simultaneous hyperedges at \
+    parser.add_argument('--regular', '-r', default=1, help='Maximum number of simultaneous hyperedges at \
                         any given time (default: 1)')
     parser.add_argument('--save', '-s', type=str, default='model/save', 
                         help='Directory to save trained model parameters to')
     parser.add_argument('--seed', type=int, default=randint(0,100), help='Random seed for dev only!')
     parser.add_argument('--shuffle', type=bool, default=True, help='True if data should be shuffled (default: True)')
     parser.add_argument('--sparsity', type=percent, default=1.0, help='Percentage of gradients to keep (default: 1.0)')
-    parser.add_argument('--uniform', '-u', type=edge_size, default=2, help='Hyperedge size (default: 2)')
+    parser.add_argument('--uniform', '-u', type=edge_size, default=1, help='Hyperedge size (default: 2)')
     parser.add_argument('--variety', type=int, default=1, 
                         help='Minimum number of new members required in order to enter into a new hyperedge. \
                         Prevents perfectly overlapping with current sessions. (default: 1)')
@@ -61,8 +63,14 @@ def main():
 
     # Launch parameter server
     try:
-        if args.hyperepochs > 0 or args.sparsity == 0:
-            ParameterServer(args)
+        if args.uniform > 1 and args.regular > 1:
+            # Distributed training
+            if args.hyperepochs > 0 and args.sparsity > 0:
+                ParameterServer(args, mode=0)
+        else:
+            # Local training
+            ParameterServer(args, mode=1)
+
     except KeyboardInterrupt:
         pass
 

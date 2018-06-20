@@ -52,6 +52,8 @@ class Train(DevTrainer):
     def train(self):
         h = hash(str([x.data.tolist() for x in self.network.parameters()]))
         batch_idx = 0
+        val = 0
+
         for ep in range(0, self.epochs):
             self.network.train()
             ep_loss = 0
@@ -73,7 +75,8 @@ class Train(DevTrainer):
 
             self.validations.append(self.validate())
             self.ep_losses.append(ep_loss/self.num_train_batches)
+
             
-            # Must call to share train size and 
-            # validation size with parameter server
-            self.share()
+        # Must call to share train size and 
+        # validation size with parameter server
+        self.share()

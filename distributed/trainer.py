@@ -11,7 +11,7 @@ import torchvision.datasets as datasets
 from torch.utils.data import TensorDataset, DataLoader
 from multiprocessing import current_process
 import parameter_tools as pt
-import os, logging, ujson
+import os, logging, ujson, psutil
 
 
 class Trainer(object):
@@ -94,9 +94,9 @@ class Trainer(object):
            batch_size (int)    Batch size
     '''
     def log_epoch(self, pid, ep, loss, batch_idx, batch_size):
-        self.log.info('pid: {}\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
-                      pid, ep, batch_idx * batch_size, self.train_size,
-                      100. * batch_idx / self.train_size, loss.data[0]))
+        self.log.info('pid: {}\t cpu: {}%\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
+                      pid, psutil.cpu_percent(), ep, batch_idx * batch_size, self.train_size,
+                      100. * batch_idx * batch_size / self.train_size, loss.data[0]))
 
 
 
@@ -108,8 +108,6 @@ class DistributedTrainer(Trainer):
         self.pid     = current_process().pid
         self.sess_id = sess_id
         self.cache   = cache
-        sess = ujson.loads(self.cache.get(sess_id))
-        self.log.debug('DT acc: {}'.format(sess['accuracy']))
 
 
     '''

@@ -18,6 +18,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.multiprocessing import Process, cpu_count
 import logging, os
+from time import time
 
 
 class Network(nn.Module):
@@ -172,7 +173,7 @@ class Network(nn.Module):
     Input:  index  (int)             Integer index into the network.parameters() e.g. 0 
             coords (list)            Nested list containing lists of coordinate gradient pairs
                                      e.g. [[[0, 0, 0], -0.4013189971446991], [[0, 0, 1], 0.4981425702571869]]
-            lr     (float, optional) Learning rate
+            lr     (float)           Learning rate
             avg    (int, optional)   Averaging factor
 
     '''
@@ -217,10 +218,12 @@ class Network(nn.Module):
               Refer to Large Scale Distributed Deep Networks, Dean et al, 2012
 
     Input: coords (list) Nested list of lists containing coordinate-gradient pairs from parameter_tools.largest_k()
-            e.g. [[[0, 0, 0], 0.23776602745056152], [[0, 0, 1], -0.09021180123090744], [[1, 0, 0], 0.10222198069095612]]
+            e.g. [[[0, 0, 0], 0.23776602745056152], [[0, 0, 1], -0.09021180123090744], [[1, 0, 0], 0.10222198069095612]]]
+           lr  (float, optional)
            avg (int, optional)
     '''
     def add_batched_coordinates(self, coords, lr=1, avg=1):
+        start_time = time()
         num_procs = cpu_count()
         self.share_memory()
         processes = []
@@ -245,6 +248,8 @@ class Network(nn.Module):
         for p in processes:
             p.join()
 
+        self.log.info('time: {} s'.format(time()-start_time))
+
 
 '''
 Network used for development only.
@@ -253,20 +258,23 @@ Train on MNIST
 class DevNet(Network):
     def __init__(self, seed, log):
         super(DevNet, self).__init__(seed=seed, log=log)
-        manual_seed(seed)
-        self.fc1 = nn.Linear(784, 10)
+        # manual_seed(seed)
+        self.fc2 = nn.Linear(784, 10)
+        # self.fc1 = nn.Linear(784, 50)
+        # self.fc2 = nn.Linear(50, 10)
         self.loss = F.nll_loss
 
 
     def forward(self, x):
         x = x.view(-1, 784)
-        return F.log_softmax(self.fc1(x), dim=1)
+        # x = F.relu(self.fc1(x))
+        return F.log_softmax(self.fc2(x), dim=1)
 
 
 class DevNeuron(Network):
     def __init__(self, seed, log):
         super(DevNeuron, self).__init__(seed=seed, log=log)
-        manual_seed(seed)
+        # manual_seed(seed)
         self.fc1 = nn.Linear(2, 1)
         self.loss = F.nll_loss
 

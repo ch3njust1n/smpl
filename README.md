@@ -80,6 +80,7 @@ optional arguments:
 -l --local_parallel     Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)
 -lr --learning_rate     Learning rate (default: 1e-3)
 --log_freq              Frequency for logging training (default: 100)
+--log_level 			Logging level
 -n --name               Name of experiment (default: MNIST)
 -p --party              Name of party configuration file. (default: party.json)
 -v --regular            Maximum number of simultaneous hyperedges at any given time (default: 1)
