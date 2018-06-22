@@ -25,6 +25,7 @@ class Trainer(object):
         self.epochs            = 1
         self.log_interval      = 1
         self.log               = log
+        self.lr                = 1e-3
         self.network           = network
         self.num_train_batches = 0
         self.num_val_batches   = 0
@@ -114,7 +115,6 @@ class DistributedTrainer(Trainer):
     cache train set and validation set sizes, and final validation accuracy with parameter server
     '''
     def share(self):
-        self.log.debug('train.share() sess_id:{}'.format(self.sess_id))
         sess = ujson.loads(self.cache.get(self.sess_id))
         sess['ep_losses'] = self.ep_losses
         sess['train_size'] = self.train_size

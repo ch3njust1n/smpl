@@ -147,11 +147,12 @@ class ParameterServer(object):
             sess_id = self.get_id()
             nn = net.DevNet(seed=self.seed, log=self.log)
             parameters = [x.data.tolist() for x in nn.parameters()]
+            self.log.info('depth: {}'.format(len(parameters)/2))
             self.cache.set(sess_id, ujson.dumps({"parameters": parameters, "accuracy": 0.0, "val_size": 0, 
                                                  "train_size": 0, "pid": 0, "ep_losses": [], "log": self.log_path, 
                                                  "gradients": [], "train_batches": 0, "val_batches": 0}))
-            self.__local_train(sess_id, nn, log=self.log)
-        
+            self.__local_train(sess_id, nn, async=args.async_local, log=self.log)
+
 
     '''
     Internal API
@@ -273,7 +274,6 @@ class ParameterServer(object):
         elif api == 'share_grad':
             return self.__share_grad(*args)
         elif api == 'done':
-            self.log.debug('calling api done()')
             return self.done(*args)
         else:
             self.log.error('api:{}, args:{}'.format(api, args))
@@ -308,12 +308,7 @@ class ParameterServer(object):
     Output:     (bool)             True if this peer can start another hyperepoch
     '''
     def available(self, log=None):
-        curr_edges = int(self.cache.get('curr_edges'))
-        
-        if log != None:
-            log.debug('curr_edges: {} < regular: {}'.format(curr_edges, self.regular))
-        
-        return curr_edges < self.regular
+        return int(self.cache.get('curr_edges')) < self.regular
 
 
     '''
@@ -371,7 +366,6 @@ class ParameterServer(object):
             sess_id = self.__init_session(log=log, log_path=log_path)
 
         log.info('session id: {}'.format(sess_id))
-        self.log.debug('session id: {}'.format(sess_id))
 
         with self.count_lock:
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
@@ -405,7 +399,6 @@ class ParameterServer(object):
 
         # Setup variables for sharing gradients
         sess = ujson.loads(self.cache.get(sess_id))
-        log.debug('before training acc: {}'.format(sess['accuracy']))
 
         # Each session should create its own model
         nn = net.DevNet(seed=self.seed, log=log)
@@ -490,7 +483,6 @@ class ParameterServer(object):
         
         # clean up parameter cache and gradient queue
         if not self.dev:
-            log.debug('deleting {}'.format(sess_id))
             self.cache.delete(sess_id)
 
         # increment total successful training epoches and hyperedges
@@ -714,8 +706,6 @@ class ParameterServer(object):
         possible_cliques = list(combinations(peers, self.uniform_ex))
         shuffle(possible_cliques)
 
-        log.debug('possible: {}'.format(possible_cliques))
-
         clique = []
         active = self.active_sessions(log=log)
 
@@ -731,11 +721,8 @@ class ParameterServer(object):
         for possible in possible_cliques:
             possible_set = set([str(p) for p in possible])
             intersect_lens = [len(possible_set.intersection(set([str(e) for e in edge]))) for edge in active_edges]
-            
-            log.debug('uniform: {}, max(intersect_lens): {}, variety: {}'.format(self.uniform, max(intersect_lens), self.variety))
-            
+                        
             if self.uniform - max(intersect_lens) >= self.variety:
-                log.debug('possible: {} len(pc): {}'.format(possible, len(self.pc)))
                 return list(possible)
 
         return clique
@@ -788,7 +775,7 @@ class ParameterServer(object):
                 log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
                 Thread(target=self.pc.psend, 
                        args=(send_to['host'], send_to['port'], 
-                             {"api": "share_grad", "args": [sess_id, self.me['alias'], hash(str(gradients)), gradients, sample_size]})).start()
+                             {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
         except KeyError as e:
             log.error('error: {}, keys: {}'.format(e, sess.keys()))
 
@@ -863,7 +850,6 @@ class ParameterServer(object):
 
             if not self.available(log=log):
                 os.remove(log_path)
-                self.log.debug('removed log: {}'.format(log_name))
 
                 return {}
             else:
@@ -992,7 +978,7 @@ class ParameterServer(object):
              samples   (int)  Number of samples sending peer used to generate given gradients
     Output:  ok        (bool) Bool indicating that session exists and values were updated
     '''
-    def __share_grad(self, sess_id, sender, gradient_hash, gradients, samples):
+    def __share_grad(self, sess_id, sender, gradients, samples):
         if not self.cache.exists(sess_id):
             print 'sessDNE sess_id: {}'.format(sess_id)
             return False
@@ -1026,7 +1012,6 @@ class ParameterServer(object):
     Input: sender (string) Alias of peer
     '''
     def done(self, sender):
-        self.log.debug('api:done from {}'.format(sender))
         with self.done_lock:
             peers = ujson.loads(self.cache.get('peer_status'))
             i = next((i for (i, d) in enumerate(peers) if d['alias'] == sender), None)
