@@ -15,11 +15,11 @@ import os, logging, ujson, psutil
 
 
 class Trainer(object):
-    def __init__(self, network, data, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
+    def __init__(self, network, dataset, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
         super(Trainer, self).__init__()
         self.batch_size        = batch_size
         self.cuda              = cuda
-        self.data              = data
+        self.dataset           = dataset
         self.drop_last         = drop_last
         self.ep_losses         = []
         self.epochs            = 1
@@ -32,10 +32,10 @@ class Trainer(object):
         self.seed              = seed
         self.shuffle           = shuffle
         self.train_loader      = None
-        self.train_path        = os.path.join(data, 'train')
+        self.train_path        = os.path.join(dataset.name, 'train')
         self.train_size        = 0
         self.val_loader        = None
-        self.val_path          = os.path.join(data, 'val')
+        self.val_path          = os.path.join(dataset.name, 'val')
         self.val_size          = 0
         self.validations       = []
 
@@ -102,8 +102,8 @@ class Trainer(object):
 
 
 class DistributedTrainer(Trainer):
-    def __init__(self, sess_id, cache, network, data, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
-        super(DistributedTrainer, self).__init__(network, data, batch_size=batch_size, cuda=cuda, 
+    def __init__(self, sess_id, cache, network, dataset, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
+        super(DistributedTrainer, self).__init__(network, dataset, batch_size=batch_size, cuda=cuda, 
                                                  drop_last=drop_last, shuffle=shuffle, seed=seed, log=log)
 
         self.pid     = current_process().pid
@@ -129,25 +129,13 @@ class DistributedTrainer(Trainer):
 Trainer for development only. Loads MNIST dataset on every worker.
 '''
 class DevTrainer(DistributedTrainer):
-    def __init__(self, log, sess_id, cache, network, data, batch_size=1, cuda=False, drop_last=False, 
+    def __init__(self, log, sess_id, cache, network, dataset, batch_size=1, cuda=False, drop_last=False, 
                  shuffle=True, seed=-1):
-        super(DevTrainer, self).__init__(sess_id, cache, network, data, batch_size, cuda, drop_last, shuffle, seed, log)
-        self.total_val   = 0
-        self.total_train = 0
-
-
-    def load_data(self):
-        kwargs = {'num_workers': os.cpu_count(), 'pin_memory': True} if self.cuda else {}
-        self.train_loader = DataLoader(datasets.MNIST('../data', train=True, download=True,
-                                       transform=transforms.Compose([
-                                       transforms.ToTensor(),
-                                       transforms.Normalize((0.1307,), (0.3081,))])),
-                                       batch_size=self.batch_size, shuffle=True, **kwargs)
-        self.val_loader = DataLoader(datasets.MNIST('../data', train=False, download=True,
-                                       transform=transforms.Compose([
-                                       transforms.ToTensor(),
-                                       transforms.Normalize((0.1307,), (0.3081,))])),
-                                       batch_size=self.batch_size, shuffle=True, **kwargs)
+        super(DevTrainer, self).__init__(sess_id, cache, network, dataset, batch_size, cuda, drop_last, shuffle, seed, log)
+        self.total_val         = 0
+        self.total_train       = 0
+        self.train_loader      = dataset.train_loader
+        self.val_loader        = dataset.val_loader
         self.num_train_batches = len(self.train_loader)
         self.num_val_batches   = len(self.val_loader)
         self.train_size        = self.num_train_batches*self.batch_size

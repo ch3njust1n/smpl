@@ -39,7 +39,6 @@ class Train(DevTrainer):
         self.momentum = 0.9
         self.optimizer = self.network.optimizer(self.network.parameters(), lr=self.lr)
         self.save = 'model/save'
-        self.load_data()
 
 
     '''

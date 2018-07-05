@@ -21,7 +21,7 @@ class ParameterChannel(object):
 
     def __init__(self, peers, logger=None):
         self.log = logger
-        self.peers = peers
+        self.peers = peers if type(peers) == list else [peers]
         self.connections = Manager().dict()
         self.status = 1
 

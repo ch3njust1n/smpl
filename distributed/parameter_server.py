@@ -18,8 +18,9 @@ from train import Train
 from datetime import datetime
 from itertools import combinations
 from model import network as net
+from data.dataset import Dataset
 import parameter_tools as pt
-import os, torch, ujson, redis, socket, logging, utils, test, train, data
+import os, torch, ujson, redis, socket, logging, utils, test, train
 
 
 class ParameterServer(object):
@@ -91,9 +92,6 @@ class ParameterServer(object):
             self.done_lock = Lock()
             self.sock_lock = Lock()
 
-            # Get data
-            Thread(target=self.__load_data).start()
-
             # For testing only so that we can see a difference in the parameters across peers
             if self.dev:
                 self.seed = self.me['id']
@@ -108,6 +106,9 @@ class ParameterServer(object):
                     torch.cuda.manual_seed_all(self.seed)
                 else:
                     torch.manual_seed(self.seed)
+
+            # Get data
+            self.dataset = Dataset(self.cuda, self.batch_size, self.data, host=self.ds_host, port=self.ds_port)
 
             # Setup parameter cache
             # Network() was named generically intentionally so that users can plug-and-play
@@ -144,6 +145,10 @@ class ParameterServer(object):
             # Disconnect from hypergraph
             self.shutdown()
         else:
+            # Get data
+            self.dataset = Dataset(self.cuda, self.batch_size, self.data)
+
+            # Setup model and train locally
             sess_id = self.get_id()
             nn = net.DevNet(seed=self.seed, log=self.log)
             parameters = [x.data.tolist() for x in nn.parameters()]
@@ -283,16 +288,6 @@ class ParameterServer(object):
     '''
     Internal API
 
-    Request data from DataServer
-    '''
-    def __load_data(self):
-        # self.pc.send(self.ds_host, self.ds_port, {"api": "get_data", "args":[self.me['alias']]})
-        pass
-
-
-    '''
-    Internal API
-
     Get a unique session id
 
     Output: sess_id (String) Session id
@@ -403,8 +398,9 @@ class ParameterServer(object):
         # Each session should create its own model
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(sess['parameters'])
+        conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
 
-        self.__local_train(sess_id, nn, async=self.async_local, log=log)
+        self.__local_train(sess_id, nn, conf, async=self.async_local, log=log)
 
         # Update session model rank
         sess = ujson.loads(self.cache.get(sess_id))
@@ -421,7 +417,7 @@ class ParameterServer(object):
         nn.add_batched_coordinates(sess['gradients'], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
-        conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
+        # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
         sess["done"] = True
         self.cache.set(sess_id, ujson.dumps(sess))
@@ -439,13 +435,14 @@ class ParameterServer(object):
 
     Input:  sess_id (string)           Session id
             nn      (nn.Module)        Neural network
+            conf    (Tuple)            Tuple containing training variables
             log     (Logger, optional) Session log
     Output: share   (dict)             Dictionary containing accuracy, validation size, and training size
     '''
-    def __local_train(self, sess_id, nn, async=False, log=None):
+    def __local_train(self, sess_id, nn, conf, async=False, log=None):
         # DistributedTrainer constructor parameters
         # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
-        conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
+        # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         processes = []
 
         start_time = time()
