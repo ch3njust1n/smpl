@@ -5,7 +5,7 @@ Hyper-parallel distributed training for deep neural networks
 
 
 #### System Configuration
-
+OpenStack Ubuntu 16.04 LTS
  - Be sure to set the correct IP address for all party members before running.
  - Check IPs in `server.txt`
 
