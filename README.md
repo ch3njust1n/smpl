@@ -5,7 +5,7 @@ Hyper-parallel distributed training for deep neural networks
 
 
 #### System Configuration
-
+OpenStack using Ubuntu 16.04 LTS
  - Be sure to set the correct IP address for all party members before running.
  - Check IPs in `server.txt`
 
@@ -35,7 +35,12 @@ If getting Could not connect to Redis at 127.0.0.1:6379: Connection refused ente
 redis-server --daemonize yes
 ````
 
-#### Cluster Startup
+#### Cluster Startup with Docker Swarm
+```bash
+sudo systemctl status docker
+```
+
+##### Startup Scripts (Old)
 ```bash
 bash sendall.sh
 cd smpl
