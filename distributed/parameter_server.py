@@ -18,54 +18,25 @@ from train import Train
 from datetime import datetime
 from itertools import combinations
 from model import network as net
+from data.dataset import Dataset
 import parameter_tools as pt
-import os, torch, ujson, redis, socket, logging, utils, test, train, data
+import os, torch, ujson, redis, socket, logging, utils, test, train
 
 
 class ParameterServer(object):
-    def __init__(self, args):
-        start_time          = time()
-        self.ds_host        = args.ds_host
-        self.ds_port        = args.ds_port
-        self.host           = args.host
-        self.port           = args.port
-        self.workers        = (cpu_count()-args.regular)/(args.regular)
-
-        self.async_global   = args.async_global
-        self.async_mid      = args.async_mid
-        self.async_local    = args.async_local
-        self.batch_size     = args.batch_size
-        self.cuda           = args.cuda
-        self.data           = args.data
-        self.dev            = args.dev
-        self.drop_last      = args.drop_last
-        self.epsilon        = args.epsilon
-        self.eth            = args.eth
-        self.hyperepochs    = args.hyperepochs
-        self.lr             = args.learning_rate
-        self.log_freq       = args.log_freq
-        self.name           = args.name
-        self.parallel       = args.local_parallel
-        self.party          = args.party
-        self.regular        = args.regular
-        self.save           = args.save
-        self.seed           = args.seed
-        self.shuffle        = args.shuffle
-        self.sparsity       = args.sparsity
-        self.uniform        = args.uniform
-        self.uniform_ex     = self.uniform-1 # number of peers in an edge excluding itself
-        self.variety        = args.variety
-
-        self.__clear_port()
-
-        # Locks
-        self.best_lock = Lock()
-        self.count_lock = Lock()
-        self.done_lock = Lock()
-        self.sock_lock = Lock()
-
-        # Get data
-        Thread(target=self.__load_data).start()
+    def __init__(self, args, mode):
+        # General parameters
+        start_time = time()
+        self.batch_size = args.batch_size
+        self.cuda       = args.cuda
+        self.data       = args.data
+        self.drop_last  = args.drop_last
+        self.eth        = args.eth
+        self.log_level  = args.log_level
+        self.party      = args.party
+        self.seed       = args.seed
+        self.shuffle    = args.shuffle
+        self.workers    = cpu_count()
 
         # Load party config
         self.peers = utils.load_json(os.path.join(os.getcwd(), 'distributed/config/', self.party))
@@ -76,71 +47,118 @@ class ParameterServer(object):
         utils.check_party(self.peers)
         self.me = utils.get_me(self.peers, eth=self.eth)
 
-        # For testing only so that we can see a difference in the parameters across peers
-        if self.dev:
-            self.seed = self.me['id']
-
-        # Clear previous logs
         self.log_dir = os.path.join(os.getcwd(), 'logs')
-        for file in os.listdir(self.log_dir):
-            if file.endswith('.log'): os.remove(os.path.join(self.log_dir, file))
-
-        self.log, self.log_path = utils.log(self.log_dir, 'ps{}'.format(self.me['id']))
-
-        if self.dev:
-            # CUDA/GPU settings
-            if args.cuda and torch.cuda.is_available():
-                torch.cuda.manual_seed_all(self.seed)
-            else:
-                torch.manual_seed(self.seed)
-
-        # Save all state in Redis
-        self.cache = redis.StrictRedis(host='localhost', port=6379, db=0)
+        self.log, self.log_path = utils.log(self.log_dir, 'ps{}'.format(self.me['id']), level=self.log_level)
+        self.cache              = redis.StrictRedis(host='localhost', port=6379, db=0)
 
         try:
             self.cache.ping()
-        except ConnectionError:
+        except Exception:
             self.log.exception("Redis isn't running. try `sudo systemctl start redis`")
             exit(0)
 
         if args.flush:
             self.flush()
 
-        # Setup parameter cache
-        # Network() was named generically intentionally so that users can plug-and-play
-        # Track best set of parameters. Equivalent of "global" params in central server model.
-        # Stash this server's info
-        self.cache.set('best', ujson.dumps({"accuracy": 0.00, "val_size": 0, "train_size": 0, "log": self.log_path,
-                                            "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()],
-                                            "alias": self.me['alias']}))
-        self.cache.set('server', ujson.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
-        self.cache.set('curr_edges', 0)
-        self.cache.set('hyperedges', 0)
-        self.cache.set('origin_edges', 0)
-        self.cache.set('sock_pids', [])
-        self.cache.set('done', 0)
-        self.cache.set('peer_status', ujson.dumps([{'alias': p['alias'], 'done': 0} for p in self.peers]))
+        self.log.info('Mode: {}'.format(mode))
+        # Distributed training parameters
+        if mode == 0:
+            self.ds_host        = args.ds_host
+            self.ds_port        = args.ds_port
+            self.host           = args.host
+            self.port           = args.port
+            self.workers        = (cpu_count()-args.regular)/(args.regular)
 
-        # Setup TCP connections to all peers
-        self.tcp_conn = {}
-        self.pc = ParameterChannel(self.peers, logger=self.log)
+            self.async_global   = args.async_global
+            self.async_mid      = args.async_mid
+            self.async_local    = args.async_local
+            self.dev            = args.dev
+            self.epsilon        = args.epsilon
+            self.hyperepochs    = args.hyperepochs
+            self.lr             = args.learning_rate
+            self.name           = args.name
+            self.parallel       = args.local_parallel
+            self.regular        = args.regular
+            self.save           = args.save
+            self.sparsity       = args.sparsity
+            self.uniform        = args.uniform
+            self.uniform_ex     = self.uniform-1 # number of peers in an edge excluding itself
+            self.variety        = args.variety
 
-        # Establish ports for receiving API calls
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((self.host, self.port))
-        self.sock.listen(1)
-        Thread(target=self.__listen).start()
+            self.__clear_port()
 
-        self.pc.setup()
+            # Locks
+            self.best_lock = Lock()
+            self.count_lock = Lock()
+            self.done_lock = Lock()
+            self.sock_lock = Lock()
 
-        # Init training
-        self.__async_train()
-        self.log.info('total time: {} (seconds)'.format(time()-start_time))
+            # For testing only so that we can see a difference in the parameters across peers
+            if self.dev:
+                self.seed = self.me['id']
 
-        # Disconnect from hypergraph
-        self.shutdown()
-        
+            # Clear previous logs
+            for file in os.listdir(self.log_dir):
+                if file.endswith('.log'): os.remove(os.path.join(self.log_dir, file))
+
+            if self.dev:
+                # CUDA/GPU settings
+                if args.cuda and torch.cuda.is_available():
+                    torch.cuda.manual_seed_all(self.seed)
+                else:
+                    torch.manual_seed(self.seed)
+
+            # Get data
+            self.dataset = Dataset(self.cuda, self.batch_size, self.data, host=self.ds_host, port=self.ds_port)
+
+            # Setup parameter cache
+            # Network() was named generically intentionally so that users can plug-and-play
+            # Track best set of parameters. Equivalent of "global" params in central server model.
+            # Stash this server's info
+            self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
+                                                "parameters": [x.data.tolist() for x in net.DevConv(self.seed, self.log).parameters()],
+                                                "alias": self.me['alias']}))
+            self.cache.set('server', ujson.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
+            self.cache.set('curr_edges', 0)
+            self.cache.set('hyperedges', 0)
+            self.cache.set('origin_edges', 0)
+            self.cache.set('sock_pids', [])
+            self.cache.set('done', 0)
+            self.cache.set('peer_status', ujson.dumps([{'alias': p['alias'], 'done': 0} for p in self.peers]))
+
+            # Setup TCP connections to all peers
+            self.tcp_conn = {}
+            self.pc = ParameterChannel(self.peers, logger=self.log)
+
+            # Establish ports for receiving API calls
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.bind((self.host, self.port))
+            self.sock.listen(1)
+            Thread(target=self.__listen).start()
+
+            self.pc.setup()
+
+            # Init training
+            self.__async_train()
+            self.log.info('total time: {} (seconds)'.format(time()-start_time))
+
+            # Disconnect from hypergraph
+            self.shutdown()
+        else:
+            # Get data
+            self.dataset = Dataset(self.cuda, self.batch_size, self.data)
+
+            # Setup model and train locally
+            sess_id = self.get_id()
+            nn = net.DevConv(seed=self.seed, log=self.log)
+            parameters = [x.data.tolist() for x in nn.parameters()]
+            self.log.info('depth: {}'.format(len(parameters)/2))
+            self.cache.set(sess_id, ujson.dumps({"parameters": parameters, "accuracy": 0.0, "val_size": 0, 
+                                                 "train_size": 0, "pid": 0, "ep_losses": [], "log": self.log_path, 
+                                                 "gradients": [], "train_batches": 0, "val_batches": 0}))
+            self.__local_train(sess_id, nn, async=args.async_local, log=self.log)
+
 
     '''
     Internal API
@@ -262,7 +280,6 @@ class ParameterServer(object):
         elif api == 'share_grad':
             return self.__share_grad(*args)
         elif api == 'done':
-            self.log.debug('calling api done()')
             return self.done(*args)
         else:
             self.log.error('api:{}, args:{}'.format(api, args))
@@ -272,11 +289,12 @@ class ParameterServer(object):
     '''
     Internal API
 
-    Request data from DataServer
+    Get a unique session id
+
+    Output: sess_id (String) Session id
     '''
-    def __load_data(self):
-        # self.pc.send(self.ds_host, self.ds_port, {"api": "get_data", "args":[self.me['alias']]})
-        pass
+    def get_id(self):
+        return ''.join(['sess', str(getrandbits(randint(1,256)))])
 
 
     '''
@@ -286,12 +304,7 @@ class ParameterServer(object):
     Output:     (bool)             True if this peer can start another hyperepoch
     '''
     def available(self, log=None):
-        curr_edges = int(self.cache.get('curr_edges'))
-        
-        if log != None:
-            log.debug('curr_edges: {} < regular: {}'.format(curr_edges, self.regular))
-        
-        return curr_edges < self.regular
+        return int(self.cache.get('curr_edges')) < self.regular
 
 
     '''
@@ -337,7 +350,7 @@ class ParameterServer(object):
     '''
     def __train_hyperedge(self):
         start = time()
-        log, log_path = utils.log(self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.get_date()))
+        log, log_path = utils.log(self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.get_date()), level=self.log_level)
         log.info('train_hyperedge')
 
         connected = False
@@ -349,7 +362,6 @@ class ParameterServer(object):
             sess_id = self.__init_session(log=log, log_path=log_path)
 
         log.info('session id: {}'.format(sess_id))
-        self.log.debug('session id: {}'.format(sess_id))
 
         with self.count_lock:
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
@@ -383,13 +395,13 @@ class ParameterServer(object):
 
         # Setup variables for sharing gradients
         sess = ujson.loads(self.cache.get(sess_id))
-        log.debug('before training acc: {}'.format(sess['accuracy']))
 
         # Each session should create its own model
-        nn = net.DevNet(seed=self.seed, log=log)
+        nn = net.DevConv(seed=self.seed, log=log)
         nn.update_parameters(sess['parameters'])
+        conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
 
-        self.__local_train(sess_id, nn, log)
+        self.__local_train(sess_id, nn, conf, async=self.async_local, log=log)
 
         # Update session model rank
         sess = ujson.loads(self.cache.get(sess_id))
@@ -406,7 +418,7 @@ class ParameterServer(object):
         nn.add_batched_coordinates(sess['gradients'], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
-        conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
+        # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
         sess["done"] = True
         self.cache.set(sess_id, ujson.dumps(sess))
@@ -424,18 +436,19 @@ class ParameterServer(object):
 
     Input:  sess_id (string)           Session id
             nn      (nn.Module)        Neural network
+            conf    (Tuple)            Tuple containing training variables
             log     (Logger, optional) Session log
     Output: share   (dict)             Dictionary containing accuracy, validation size, and training size
     '''
-    def __local_train(self, sess_id, nn, log=None):
+    def __local_train(self, sess_id, nn, conf, async=False, log=None):
         # DistributedTrainer constructor parameters
         # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
-        conf = (log, sess_id, self.cache, nn, self.data, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
+        # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         processes = []
 
         start_time = time()
 
-        if self.async_local:
+        if async:
             log.info('hogwild!')
             nn.share_memory()
 
@@ -468,7 +481,6 @@ class ParameterServer(object):
         
         # clean up parameter cache and gradient queue
         if not self.dev:
-            log.debug('deleting {}'.format(sess_id))
             self.cache.delete(sess_id)
 
         # increment total successful training epoches and hyperedges
@@ -493,7 +505,7 @@ class ParameterServer(object):
     '''
     def __init_session(self, log=None, log_path=''):
         ok = False
-        sess_id = ''.join(['sess', str(getrandbits(randint(1,256)))])
+        sess_id = self.get_id()
         sess = {"id": sess_id, "me": self.me}
         resp = []
 
@@ -692,8 +704,6 @@ class ParameterServer(object):
         possible_cliques = list(combinations(peers, self.uniform_ex))
         shuffle(possible_cliques)
 
-        log.debug('possible: {}'.format(possible_cliques))
-
         clique = []
         active = self.active_sessions(log=log)
 
@@ -709,11 +719,8 @@ class ParameterServer(object):
         for possible in possible_cliques:
             possible_set = set([str(p) for p in possible])
             intersect_lens = [len(possible_set.intersection(set([str(e) for e in edge]))) for edge in active_edges]
-            
-            log.debug('uniform: {}, max(intersect_lens): {}, variety: {}'.format(self.uniform, max(intersect_lens), self.variety))
-            
+                        
             if self.uniform - max(intersect_lens) >= self.variety:
-                log.debug('possible: {} len(pc): {}'.format(possible, len(self.pc)))
                 return list(possible)
 
         return clique
@@ -766,7 +773,7 @@ class ParameterServer(object):
                 log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
                 Thread(target=self.pc.psend, 
                        args=(send_to['host'], send_to['port'], 
-                             {"api": "share_grad", "args": [sess_id, self.me['alias'], hash(str(gradients)), gradients, sample_size]})).start()
+                             {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
         except KeyError as e:
             log.error('error: {}, keys: {}'.format(e, sess.keys()))
 
@@ -834,14 +841,13 @@ class ParameterServer(object):
     def __establish_session(self, sess_id):
         # Setup logging for hyperedge
         log_name = '{}-{}'.format(self.me['id'], sess_id)
-        log, log_path = utils.log(self.log_dir, log_name, mode='w')
+        log, log_path = utils.log(self.log_dir, log_name, mode='w', level=self.log_level)
         log.info('api:establish_session')
 
         with self.count_lock:
 
             if not self.available(log=log):
                 os.remove(log_path)
-                self.log.debug('removed log: {}'.format(log_name))
 
                 return {}
             else:
@@ -926,7 +932,7 @@ class ParameterServer(object):
             log.error('No party key, len(sess): {}'.format(len(sess)))
 
         # Start locally training
-        nn = net.DevNet(seed=self.seed, log=log)
+        nn = net.DevConv(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
 
@@ -970,7 +976,7 @@ class ParameterServer(object):
              samples   (int)  Number of samples sending peer used to generate given gradients
     Output:  ok        (bool) Bool indicating that session exists and values were updated
     '''
-    def __share_grad(self, sess_id, sender, gradient_hash, gradients, samples):
+    def __share_grad(self, sess_id, sender, gradients, samples):
         if not self.cache.exists(sess_id):
             print 'sessDNE sess_id: {}'.format(sess_id)
             return False
@@ -1004,7 +1010,6 @@ class ParameterServer(object):
     Input: sender (string) Alias of peer
     '''
     def done(self, sender):
-        self.log.debug('api:done from {}'.format(sender))
         with self.done_lock:
             peers = ujson.loads(self.cache.get('peer_status'))
             i = next((i for (i, d) in enumerate(peers) if d['alias'] == sender), None)

@@ -125,6 +125,9 @@ def load_json(file_path):
 Get the IP address of the current machine
 Source:
 https://raspberrypi.stackexchange.com/questions/6714/how-to-get-the-raspberry-pis-ip-address-for-ssh
+
+Input:  ifname (str) Ethernet interface
+Output: ip     (str) IP address
 '''
 def get_ip_address(ifname):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -151,7 +154,7 @@ def get_me(config, eth='ens3'):
     for i, conf in enumerate(config):
         if conf['host'] == ip:
             return dict(config.pop(i))
-    raise Exception('Error: party.json is missing this host\'s information')
+    raise Exception('Error: party.json is missing this host {}'.format(ip))
 
 
 '''

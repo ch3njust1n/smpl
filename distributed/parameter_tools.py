@@ -135,7 +135,7 @@ def largest_k(tensors, k=1, percent=True, zeros=False):
 
             for point in zip(*axises[:]):
                 g = point[-1]
-                if zeros or (not zeros and g > 0):
+                if zeros or (not zeros and g != 0):
                     c = list(point[:-1])
                     c.insert(0, i)
                     coords.append([c, g])

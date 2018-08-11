@@ -21,7 +21,7 @@ class ParameterChannel(object):
 
     def __init__(self, peers, logger=None):
         self.log = logger
-        self.peers = peers
+        self.peers = peers if type(peers) == list else [peers]
         self.connections = Manager().dict()
         self.status = 1
 
@@ -157,7 +157,6 @@ class ParameterChannel(object):
         ok = False
         content = ''
         api = msg['api']
-        self.log.debug('send to api: {}'.format(api))
 
         try:
             resp = ''
@@ -191,9 +190,6 @@ class ParameterChannel(object):
                     self.log.exception(e)
                     del self.connections[addr]
                     return False, ''
-
-            if 'invalid' in resp:
-                self.log.debug('invalid addr: {}, msg: {}'.format(addr, msg))
             
             # Check that a length is given
             if len(resp) > 0 and len(resp[0]) > 0:

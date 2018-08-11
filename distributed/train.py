@@ -12,6 +12,7 @@ import os, utils
 import datetime as dt
 import parameter_tools as pt
 import torch.optim as optim
+from torch import equal
 from torch.autograd import Variable
 from numpy import sum, zeros, unravel_index
 from itertools import count
@@ -34,11 +35,10 @@ class Train(DevTrainer):
         self.batch_size = 8
         self.epochs = 1
         self.log_interval = 500
-        self.lr = 1
+        self.lr = 1e-3
         self.momentum = 0.9
         self.optimizer = self.network.optimizer(self.network.parameters(), lr=self.lr)
         self.save = 'model/save'
-        self.load_data()
 
 
     '''
@@ -50,8 +50,9 @@ class Train(DevTrainer):
     losses   (list)    List of training losses
     '''            
     def train(self):
-        h = hash(str([x.data.tolist() for x in self.network.parameters()]))
         batch_idx = 0
+        val = 0
+
         for ep in range(0, self.epochs):
             self.network.train()
             ep_loss = 0
@@ -65,15 +66,15 @@ class Train(DevTrainer):
                 loss = self.network.loss(self.network(data), target)
                 loss.backward()
                 ep_loss += loss.data.tolist()[0]
+                self.optimizer.step()
 
                 if batch_idx % self.log_interval == 0:
                     self.log_epoch(self.pid, ep, loss, batch_idx, batch_size)
 
-                self.optimizer.step()
-
             self.validations.append(self.validate())
             self.ep_losses.append(ep_loss/self.num_train_batches)
+
             
-            # Must call to share train size and 
-            # validation size with parameter server
-            self.share()
+        # Must call to share train size and 
+        # validation size with parameter server
+        self.share()

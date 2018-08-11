@@ -14,6 +14,7 @@ from distributed.parameter_server import ParameterServer
 from multiprocessing import Process, cpu_count
 from random import random, randint
 import time, argparse, signal, os
+import logging
 
 
 def main():
@@ -23,7 +24,7 @@ def main():
     parser.add_argument('--port', type=int, default=9888, help='Port number for GradientServer (default: 9888)')
     parser.add_argument('--async_global', type=bool, default=True, help='Set for globally asynchronous training (default: True)')
     parser.add_argument('--async_mid', type=bool, default=True, help='Set for asynchronous training within hyperedges (default: True)')
-    parser.add_argument('--async_local', type=bool, default=False, help='Set for asynchronous training on each peer (default: True)')
+    parser.add_argument('--async_local', type=bool, default=True, help='Set for asynchronous training on each peer (default: True)')
     parser.add_argument('--batch_size', type=int, default=16, help='Data batch size (default: 16)')
     parser.add_argument('--cuda', type=str2bool, default=False, help='Enables CUDA training (default: False)')
     parser.add_argument('--data', '-d', type=str, default='mnist', help='Data directory (default: mnist)')
@@ -44,10 +45,11 @@ def main():
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
     parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate (default: 1e-3)')
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training (default: 100)')
+    parser.add_argument('--log_level', type=int, default=logging.DEBUG, help='Logging level. Set to 100 to supress all logs.')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment (default: MNIST)')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file. (default: party.json)')
     parser.add_argument('--regular', '-r', default=2, help='Maximum number of simultaneous hyperedges at \
-                        any given time (default: 1)')
+                        any given time (default: 2)')
     parser.add_argument('--save', '-s', type=str, default='model/save', 
                         help='Directory to save trained model parameters to')
     parser.add_argument('--seed', type=int, default=randint(0,100), help='Random seed for dev only!')
@@ -61,8 +63,14 @@ def main():
 
     # Launch parameter server
     try:
-        if args.hyperepochs > 0 or args.sparsity == 0:
-            ParameterServer(args)
+        if args.uniform > 1 and args.regular > 1:
+            # Distributed training
+            if args.hyperepochs > 0 and args.sparsity > 0:
+                ParameterServer(args, mode=0)
+        else:
+            # Local training
+            ParameterServer(args, mode=1)
+
     except KeyboardInterrupt:
         pass
 
