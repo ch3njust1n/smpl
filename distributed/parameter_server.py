@@ -60,6 +60,7 @@ class ParameterServer(object):
         if args.flush:
             self.flush()
 
+        self.log.info('Mode: {}'.format(mode))
         # Distributed training parameters
         if mode == 0:
             self.ds_host        = args.ds_host
@@ -115,7 +116,7 @@ class ParameterServer(object):
             # Track best set of parameters. Equivalent of "global" params in central server model.
             # Stash this server's info
             self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
-                                                "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()],
+                                                "parameters": [x.data.tolist() for x in net.DevConv(self.seed, self.log).parameters()],
                                                 "alias": self.me['alias']}))
             self.cache.set('server', ujson.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
             self.cache.set('curr_edges', 0)
@@ -150,7 +151,7 @@ class ParameterServer(object):
 
             # Setup model and train locally
             sess_id = self.get_id()
-            nn = net.DevNet(seed=self.seed, log=self.log)
+            nn = net.DevConv(seed=self.seed, log=self.log)
             parameters = [x.data.tolist() for x in nn.parameters()]
             self.log.info('depth: {}'.format(len(parameters)/2))
             self.cache.set(sess_id, ujson.dumps({"parameters": parameters, "accuracy": 0.0, "val_size": 0, 
@@ -396,7 +397,7 @@ class ParameterServer(object):
         sess = ujson.loads(self.cache.get(sess_id))
 
         # Each session should create its own model
-        nn = net.DevNet(seed=self.seed, log=log)
+        nn = net.DevConv(seed=self.seed, log=log)
         nn.update_parameters(sess['parameters'])
         conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
 
@@ -931,7 +932,7 @@ class ParameterServer(object):
             log.error('No party key, len(sess): {}'.format(len(sess)))
 
         # Start locally training
-        nn = net.DevNet(seed=self.seed, log=log)
+        nn = net.DevConv(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
 

@@ -25,6 +25,7 @@ class Network(nn.Module):
     def __init__(self, seed=0, log=None):
         super(Network, self).__init__()
         self.optimizer = optim.SGD
+        self.loss = F.nll_loss
         self.log = log
 
 
@@ -193,9 +194,12 @@ class Network(nn.Module):
         params = [p for p in self.parameters()]
 
         # create coordinate/index tensor i, and value tensor v
-        i = LongTensor(cd)
-        v = FloatTensor(gd)
-        s = list(params[index].size())
+        try:
+            i = LongTensor(cd)
+            v = FloatTensor(gd)
+            s = list(params[index].size())
+        except Exception as e:
+            self.log.Exception("Unexpected exception! %s", e)
 
         # ensure that size has two coordinates e.g. prevent cases like (2L,)
         if len(s) == 1:
@@ -266,13 +270,14 @@ class DevNet(Network):
 
 
 class DevConv(Network):
-    def __init__(self):
-        super(Net, self).__init__()
+    def __init__(self, seed, log):
+        super(DevConv, self).__init__(seed=seed, log=log)
         self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
         self.fc1 = nn.Linear(320, 50)
         self.fc2 = nn.Linear(50, 10)
+        self.loss = F.nll_loss
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
