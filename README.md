@@ -5,7 +5,7 @@ Hyper-parallel distributed training for deep neural networks
 
 
 #### System Configuration
-OpenStack using Ubuntu 16.04 LTS
+OpenStack Ubuntu 16.04 LTS
  - Be sure to set the correct IP address for all party members before running.
  - Check IPs in `server.txt`
 
@@ -35,12 +35,7 @@ If getting Could not connect to Redis at 127.0.0.1:6379: Connection refused ente
 redis-server --daemonize yes
 ````
 
-#### Cluster Startup with Docker Swarm
-```bash
-sudo systemctl status docker
-```
-
-##### Startup Scripts (Old)
+#### Cluster Startup
 ```bash
 bash sendall.sh
 cd smpl
@@ -85,7 +80,6 @@ optional arguments:
 -l --local_parallel     Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)
 -lr --learning_rate     Learning rate (default: 1e-3)
 --log_freq              Frequency for logging training (default: 100)
---log_level 			Logging level
 -n --name               Name of experiment (default: MNIST)
 -p --party              Name of party configuration file. (default: party.json)
 -v --regular            Maximum number of simultaneous hyperedges at any given time (default: 1)
