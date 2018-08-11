@@ -4,7 +4,7 @@
 	6.27.17
 '''
 
-import os, pickle, datetime, ujson, codecs, glob, torch, math, 
+import os, pickle, datetime, ujson, codecs, glob, torch, math
 import numpy as np
 from subprocess import PIPE, Popen
 from time import gmtime, strftime
