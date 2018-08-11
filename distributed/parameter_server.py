@@ -48,7 +48,7 @@ class ParameterServer(object):
         self.me = utils.get_me(self.peers, eth=self.eth)
 
         self.log_dir = os.path.join(os.getcwd(), 'logs')
-        self.log, self.log_path = utils.log(self.log_dir, 'ps{}'.format(self.me['id']), level=self.log_level)
+        self.log, self.log_path = utils.log(self.me['alias'], self.log_dir, 'ps{}'.format(self.me['id']), level=self.log_level)
         self.cache              = redis.StrictRedis(host='localhost', port=6379, db=0)
 
         try:
@@ -350,7 +350,7 @@ class ParameterServer(object):
     '''
     def __train_hyperedge(self):
         start = time()
-        log, log_path = utils.log(self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.get_date()), level=self.log_level)
+        log, log_path = utils.log(self.me['alias'], self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.get_date()), level=self.log_level)
         log.info('train_hyperedge')
 
         connected = False
@@ -389,7 +389,7 @@ class ParameterServer(object):
         - Pass sess_id to Train so it can retrieve the session object from redis
         '''
         if log == None:
-            log, log_path = utils.log(self.log_dir, 'train-{}'.format(sess_id))
+            log, log_path = utils.log(self.me['alias'], self.log_dir, 'train-{}'.format(sess_id))
 
         log.info('training...')
 
@@ -415,6 +415,7 @@ class ParameterServer(object):
         # Retrieve gradients in session shared by peers
         sess = ujson.loads(self.cache.get(sess_id))
         sess['train_size'] += sess['share_train_sizes']
+        log.debug('addgrads: {}'.format(sess['gradients']))
         nn.add_batched_coordinates(sess['gradients'], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
@@ -841,7 +842,7 @@ class ParameterServer(object):
     def __establish_session(self, sess_id):
         # Setup logging for hyperedge
         log_name = '{}-{}'.format(self.me['id'], sess_id)
-        log, log_path = utils.log(self.log_dir, log_name, mode='w', level=self.log_level)
+        log, log_path = utils.log(self.me['alias'], self.log_dir, log_name, mode='w', level=self.log_level)
         log.info('api:establish_session')
 
         with self.count_lock:
@@ -883,7 +884,7 @@ class ParameterServer(object):
     def __synchronize_parameters(self, sess_id, best, peers, sender, parameters=[], accuracy=0):
         # Get log
         log_name = ujson.loads(self.cache.get(sess_id))["log"]
-        log, log_path = utils.log(self.log_dir, log_name)
+        log, log_path = utils.log(self.me['alias'], self.log_dir, log_name)
         log.info('api:synchronize_parameters')
 
         # Remove itself from its own peer list
@@ -953,7 +954,7 @@ class ParameterServer(object):
             return [], -1
 
         log_name = ujson.loads(self.cache.get(sess_id))["log"]
-        log, log_path = utils.log(self.log_dir, log_name)
+        log, log_path = utils.log(self.me['alias'], self.log_dir, log_name)
         log.info('api:get_parameters sess_id: {}'.format(sess_id))
 
         model = ujson.loads(self.cache.get(sess_id))
@@ -985,7 +986,7 @@ class ParameterServer(object):
 
         # Get log
         try:
-            log, log_path = utils.log(self.log_dir, sess["log"])
+            log, log_path = utils.log(self.me['alias'], self.log_dir, sess["log"])
 
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)

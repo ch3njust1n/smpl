@@ -24,13 +24,13 @@ Input:  directory (string)           Directory containing log files
 Output: log       (logging.Logger)   Logger object
         path      (string)           Absolute path to log file
 '''
-def log(directory, filename, mode='a', level=logging.DEBUG):
+def log(alias, directory, filename, mode='a', level=logging.DEBUG):
     if filename.endswith('.log'):
         filename = filename.split('.')[0]
 
     path = os.path.join(directory, '{}.log'.format(filename))
     
-    formatter = logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(asctime)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('{} [%(filename)s:%(lineno)s - %(funcName)20s()] %(asctime)s - %(levelname)s - %(message)s'.format(alias))
     fileHandler = logging.FileHandler(filename=path, mode=mode)
     fileHandler.setFormatter(formatter)
     streamHandler = logging.StreamHandler()
