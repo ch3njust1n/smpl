@@ -30,6 +30,7 @@ class ParameterServer(object):
         self.batch_size = args.batch_size
         self.cuda       = args.cuda
         self.data       = args.data
+        self.device     = torch.device("cuda" if self.cuda else "cpu")
         self.drop_last  = args.drop_last
         self.eth        = args.eth
         self.log_level  = args.log_level
@@ -399,7 +400,7 @@ class ParameterServer(object):
         # Each session should create its own model
         nn = net.DevConv(seed=self.seed, log=log)
         nn.update_parameters(sess['parameters'])
-        conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
+        conf = (log, sess_id, self.cache, nn, self.dataset, self.device, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
 
         self.__local_train(sess_id, nn, conf, async=self.async_local, log=log)
 
@@ -449,6 +450,9 @@ class ParameterServer(object):
 
         start_time = time()
 
+        p = hash(str(nn.get_parameters(tolist=True)))
+        log.debug('param before: {}'.format(p))
+
         if async:
             log.info('hogwild!')
             nn.share_memory()
@@ -464,6 +468,9 @@ class ParameterServer(object):
         else:
             log.info('vanilla')
             Train(conf).train()
+
+        b = hash(str(nn.get_parameters(tolist=True)))
+        log.debug('param changed: {}'.format(p != b))
 
         log.info('local ({} s)'.format(time()-start_time))
 

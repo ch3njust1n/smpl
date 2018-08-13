@@ -30,7 +30,7 @@ def log(alias, directory, filename, mode='a', level=logging.DEBUG):
 
     path = os.path.join(directory, '{}.log'.format(filename))
     
-    formatter = logging.Formatter('{} [%(filename)s:%(lineno)s - %(funcName)20s()] %(asctime)s - %(levelname)s - %(message)s'.format(alias))
+    formatter = logging.Formatter('({}) [%(filename)s:%(lineno)s - %(funcName)20s()] %(asctime)s - %(levelname)s - %(message)s'.format(alias))
     fileHandler = logging.FileHandler(filename=path, mode=mode)
     fileHandler.setFormatter(formatter)
     streamHandler = logging.StreamHandler()

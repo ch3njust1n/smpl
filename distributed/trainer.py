@@ -10,23 +10,25 @@ from torch.autograd import Variable
 import torchvision.datasets as datasets
 from torch.utils.data import TensorDataset, DataLoader
 from multiprocessing import current_process
+from torch import no_grad
 import parameter_tools as pt
 import os, logging, ujson, psutil
 
 
 class Trainer(object):
-    def __init__(self, network, dataset, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
+    def __init__(self, network, dataset, device, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
         super(Trainer, self).__init__()
         self.batch_size        = batch_size
         self.cuda              = cuda
         self.dataset           = dataset
+        self.device            = device
         self.drop_last         = drop_last
         self.ep_losses         = []
         self.epochs            = 1
         self.log_interval      = 1
         self.log               = log
         self.lr                = 1e-3
-        self.network           = network
+        self.network           = network.to(self.device)
         self.num_train_batches = 0
         self.num_val_batches   = 0
         self.seed              = seed
@@ -38,8 +40,6 @@ class Trainer(object):
         self.val_path          = os.path.join(dataset.name, 'val')
         self.val_size          = 0
         self.validations       = []
-
-        pt.to_cuda(self.network, cuda=self.cuda)
 
 
     '''
@@ -67,16 +67,14 @@ class Trainer(object):
         test_loss = 0
         correct = 0
         acc_diff = 1.0
+        with no_grad():
+            for data, target in self.val_loader:
+                data, target = data.to(self.device), target.to(self.device)
+                output = self.network(data)
+                test_loss += self.network.loss(output, target, reduction='sum').item()
 
-        for data, target in self.val_loader:
-            data = pt.to_cuda(data, cuda=self.cuda)
-            target = pt.to_cuda(target, cuda=self.cuda)
-            data, target = Variable(data, volatile=True), Variable(target)
-            output = self.network(data)
-            test_loss += self.network.loss(output, target, size_average=False).data[0]
-
-            pred = output.data.max(1)[1]  # get the index of the max log-probability
-            correct += pred.eq(target.data).cpu().sum()
+                pred = output.data.max(1)[1]  # get the index of the max log-probability
+                correct += pred.eq(target.data).cpu().sum()
 
         test_loss /= self.val_size
         acc = 100. * correct / self.val_size
@@ -97,13 +95,13 @@ class Trainer(object):
     def log_epoch(self, pid, ep, loss, batch_idx, batch_size):
         self.log.info('pid: {}\t cpu: {}%\tepoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
                       pid, psutil.cpu_percent(), ep, batch_idx * batch_size, self.train_size,
-                      100. * batch_idx * batch_size / self.train_size, loss.data[0]))
+                      100. * batch_idx * batch_size / self.train_size, loss.item()))
 
 
 
 class DistributedTrainer(Trainer):
-    def __init__(self, sess_id, cache, network, dataset, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
-        super(DistributedTrainer, self).__init__(network, dataset, batch_size=batch_size, cuda=cuda, 
+    def __init__(self, sess_id, cache, network, dataset, device, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
+        super(DistributedTrainer, self).__init__(network, dataset, device, batch_size=batch_size, cuda=cuda, 
                                                  drop_last=drop_last, shuffle=shuffle, seed=seed, log=log)
 
         self.pid     = current_process().pid
@@ -129,9 +127,9 @@ class DistributedTrainer(Trainer):
 Trainer for development only. Loads MNIST dataset on every worker.
 '''
 class DevTrainer(DistributedTrainer):
-    def __init__(self, log, sess_id, cache, network, dataset, batch_size=1, cuda=False, drop_last=False, 
+    def __init__(self, log, sess_id, cache, network, dataset, device, batch_size=1, cuda=False, drop_last=False, 
                  shuffle=True, seed=-1):
-        super(DevTrainer, self).__init__(sess_id, cache, network, dataset, batch_size, cuda, drop_last, shuffle, seed, log)
+        super(DevTrainer, self).__init__(sess_id, cache, network, dataset, device, batch_size, cuda, drop_last, shuffle, seed, log)
         self.total_val         = 0
         self.total_train       = 0
         self.train_loader      = dataset.train_loader
