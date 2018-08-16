@@ -52,29 +52,26 @@ class Train(DevTrainer):
     def train(self):
         batch_idx = 0
         val = 0
-
         for ep in range(0, self.epochs):
             self.network.train()
             ep_loss = 0
 
             for batch_idx, (data, target) in enumerate(self.train_loader):
                 batch_size = len(data)
-                data = Variable(pt.to_cuda(data, cuda=self.cuda))
-                target = Variable(pt.to_cuda(target, cuda=self.cuda))
+                data, target = data.to(self.device), target.to(self.device)
 
                 self.optimizer.zero_grad()
                 loss = self.network.loss(self.network(data), target)
                 loss.backward()
-                ep_loss += loss.data.tolist()[0]
+                ep_loss += loss.item()
                 self.optimizer.step()
 
                 if batch_idx % self.log_interval == 0:
                     self.log_epoch(self.pid, ep, loss, batch_idx, batch_size)
 
-            self.validations.append(self.validate())
+            self.validations.append(super(DevTrainer, self).validate())
             self.ep_losses.append(ep_loss/self.num_train_batches)
 
-            
         # Must call to share train size and 
         # validation size with parameter server
         self.share()

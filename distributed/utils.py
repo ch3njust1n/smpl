@@ -4,7 +4,7 @@
 	6.27.17
 '''
 
-import os, pickle, datetime, ujson, codecs, glob, torch, math, logging
+import os, pickle, datetime, json, codecs, glob, torch, math, logging
 import socket, fcntl, struct
 import numpy as np
 from subprocess import PIPE, Popen
@@ -24,13 +24,13 @@ Input:  directory (string)           Directory containing log files
 Output: log       (logging.Logger)   Logger object
         path      (string)           Absolute path to log file
 '''
-def log(directory, filename, mode='a', level=logging.DEBUG):
+def log(alias, directory, filename, mode='a', level=logging.DEBUG):
     if filename.endswith('.log'):
         filename = filename.split('.')[0]
 
     path = os.path.join(directory, '{}.log'.format(filename))
     
-    formatter = logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(asctime)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('({}) [%(filename)s:%(lineno)s - %(funcName)20s()] %(asctime)s - %(levelname)s - %(message)s'.format(alias))
     fileHandler = logging.FileHandler(filename=path, mode=mode)
     fileHandler.setFormatter(formatter)
     streamHandler = logging.StreamHandler()
@@ -106,19 +106,19 @@ Output: (string) Path to saved file
 '''
 def save_json(save_dir, data):
     filename = gen_filename(save_dir, 'json')
-    ujson.dump(data, codecs.open(filename, 'w', encoding='utf-8'))
+    json.dump(data, codecs.open(filename, 'w', encoding='utf-8'))
     return filename
 
 
 '''
-Load ujson object from a saved file
+Load json object from a saved file
 
-Input   file_path (string) Path to ujson file
-Output: (list) Loaded ujson
+Input   file_path (string) Path to json file
+Output: (list) Loaded json
 '''
 def load_json(file_path):
     with open(file_path, 'rb') as file:
-        return ujson.load(file)
+        return json.load(file)
 
 
 '''
@@ -141,10 +141,10 @@ def get_ip_address(ifname):
 '''
 Determine which configuration information corresponds to this machine.
 All nodes on the MOC use device ens3 for network communication.
-This will raise an exception if the party.ujson configuration file is missing information
+This will raise an exception if the party.json configuration file is missing information
 on this machine. Removes this machine from the list.
 
-Input:  config (list) List from party.ujson
+Input:  config (list) List from party.json
         eth (string, optional) Ethernet interface
 Output: dictionary containing identity of this machine
 '''

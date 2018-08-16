@@ -23,4 +23,8 @@ echo "export PATH=\"/home/ubuntu/anaconda2/bin:$PATH\"" >> ~/.bashrc
 echo "source activate smpl" >> ~/.bashrc
 echo "redis-server --daemonize yes" >> ~/.bashrc
 
+# Make smpl executable
+chmod +x smpl.py
+chmod 755 smpl.py
+
 source ~/.bashrc

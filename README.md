@@ -9,6 +9,14 @@ OpenStack Ubuntu 16.04 LTS
  - Be sure to set the correct IP address for all party members before running.
  - Check IPs in `server.txt`
 
+#### Bash Scripts
+You need to update the following bash scripts with the IPs of your nodes and your private key
+- server.txt
+- pull.sh
+- start.sh
+- stop.sh
+- pulllogs.sh
+
 
 #### Single Node Requirements Setup
 ```bash
@@ -38,15 +46,22 @@ redis-server --daemonize yes
 #### Cluster Startup
 ```bash
 bash sendall.sh
-cd smpl
+cd smpl #*** MUST CD into directory. Cannot do bash smpl/start.sh. Unsure why this happens
 bash start.sh
 ```
 
 #### Diagnose Runs
 ```
+Pull logs and display training summary
 python session.py --check -pl
 
 If receiving issue about redis not importing even though it's installed, try deactivating and reactivating environment
+
+Get all redis objects
+python session.py --keys
+
+Examine a specific training session
+python session.py -s sess289609693563518796840060 -m -p parameters
 ```
 
 

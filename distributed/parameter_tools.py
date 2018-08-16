@@ -56,15 +56,17 @@ Extracts the largest k values across all tensors in the given list
 
 TODO: Parallelize, refactor and document
 
-Input: tensors (list) List of PyTorch FloatTensors
-       k       (numeric, optional) Value indicating amount of parameters to keep
-       percent (bool, optional) Indicates if k is a percent or an integer
-       zeros   (bool, optional) If False, ignores all parameters equal to zero
+Input: tensors   (list) List of PyTorch FloatTensors
+       k         (numeric, optional) Value indicating amount of parameters to keep
+       percent   (bool, optional) Indicates if k is a percent or an integer
+       zeros     (bool, optional) If False, ignores all parameters equal to zero
+       magnitude (bool, optional) If True, extracts largest k absolute values
+       tensor    (bool, optional) If False, extract values as tensors. Else if True, extract as floats
 
 Output: (list) List of lists containing coordinates-parameter pairs
         e.g. [[[0, 0, 0], -0.43671706318855286], [[0, 0, 1], -0.4151779115200043], [[1, 0, 0], 0.19337968528270721]]
 '''
-def largest_k(tensors, k=1, percent=True, zeros=False):
+def largest_k(tensors, k=1, percent=True, zeros=False, magnitude=True, tensor=False):
     
     flat = []
     dims = []
@@ -104,7 +106,10 @@ def largest_k(tensors, k=1, percent=True, zeros=False):
         raise Exception('k must be in range [0, %d]\ntotal parameters: %d' % (total, total))
 
     # Find top-k values and corresponding coordinates in the original tensors
-    top, coord_1d = torch.topk(torch.abs(merged), k)
+    if not tensor:
+        merged
+
+    top, coord_1d = torch.topk(torch.abs(merged), k) if magnitude else torch.topk(merged, k)
     top = torch.gather(merged, 0, to_cuda(torch.LongTensor(coord_1d.tolist()), use_cuda))
     coord_1d = sorted([(t, c) for (t, c) in zip(top, coord_1d)], key=lambda x: x[1])
 
@@ -134,7 +139,8 @@ def largest_k(tensors, k=1, percent=True, zeros=False):
             axises.append(grad)
 
             for point in zip(*axises[:]):
-                g = point[-1]
+                g = point[-1] if tensor else point[-1].data.tolist()
+                
                 if zeros or (not zeros and g != 0):
                     c = list(point[:-1])
                     c.insert(0, i)
