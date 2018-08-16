@@ -200,7 +200,7 @@ class Network(nn.Module):
             v = FloatTensor(gd)
             s = list(params[index].size())
         except Exception as e:
-            self.log.Exception("Unexpected exception! %s", e)
+            self.log.exception("Unexpected exception! %s", e)
 
         # ensure that size has two coordinates e.g. prevent cases like (2L,)
         if len(s) == 1:
