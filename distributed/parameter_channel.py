@@ -6,7 +6,7 @@
     Module of handling communication between the training loop and the ParameterServer
 '''
 
-import socket, ujson, select
+import socket, json, select
 from multiprocessing import Manager
 from threading import Thread
 from random import random
@@ -115,7 +115,7 @@ class ParameterChannel(object):
     Output: (string) response
     '''
     def format_msg(self, msg):
-        msg = ujson.dumps(msg)
+        msg = json.dumps(msg)
         size = 0
         try:
             size = len(msg)
@@ -224,7 +224,7 @@ class ParameterChannel(object):
                     raise Exception(msg)
                     return False, ''
 
-                content = ujson.loads(content)
+                content = json.loads(content)
 
                 if content == None:
                     return False, ''

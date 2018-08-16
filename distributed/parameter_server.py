@@ -20,7 +20,7 @@ from itertools import combinations
 from model import network as net
 from data.dataset import Dataset
 import parameter_tools as pt
-import os, torch, ujson, redis, socket, logging, utils, test, train
+import os, torch, json, redis, socket, logging, utils, test, train
 
 
 class ParameterServer(object):
@@ -116,16 +116,16 @@ class ParameterServer(object):
             # Network() was named generically intentionally so that users can plug-and-play
             # Track best set of parameters. Equivalent of "global" params in central server model.
             # Stash this server's info
-            self.cache.set('best', ujson.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
+            self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
                                                 "parameters": [x.data.tolist() for x in net.DevConv(self.seed, self.log).parameters()],
                                                 "alias": self.me['alias']}))
-            self.cache.set('server', ujson.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
+            self.cache.set('server', json.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
             self.cache.set('curr_edges', 0)
             self.cache.set('hyperedges', 0)
             self.cache.set('origin_edges', 0)
             self.cache.set('sock_pids', [])
             self.cache.set('done', 0)
-            self.cache.set('peer_status', ujson.dumps([{'alias': p['alias'], 'done': 0} for p in self.peers]))
+            self.cache.set('peer_status', json.dumps([{'alias': p['alias'], 'done': 0} for p in self.peers]))
 
             # Setup TCP connections to all peers
             self.tcp_conn = {}
@@ -155,7 +155,7 @@ class ParameterServer(object):
             nn = net.DevConv(seed=self.seed, log=self.log)
             parameters = [x.data.tolist() for x in nn.parameters()]
             self.log.info('depth: {}'.format(len(parameters)/2))
-            self.cache.set(sess_id, ujson.dumps({"parameters": parameters, "accuracy": 0.0, "val_size": 0, 
+            self.cache.set(sess_id, json.dumps({"parameters": parameters, "accuracy": 0.0, "val_size": 0, 
                                                  "train_size": 0, "pid": 0, "ep_losses": [], "log": self.log_path, 
                                                  "gradients": [], "train_batches": 0, "val_batches": 0}))
             self.__local_train(sess_id, nn, async=args.async_local, log=self.log)
@@ -203,9 +203,9 @@ class ParameterServer(object):
     def __receive(self, conn, addr):
         # Track pids for shutdown
         with self.sock_lock:
-            sock_pids = ujson.loads(self.cache.get('sock_pids'))
+            sock_pids = json.loads(self.cache.get('sock_pids'))
             sock_pids.append(os.getpid())
-            self.cache.set('sock_pids', ujson.dumps(sock_pids))
+            self.cache.set('sock_pids', json.dumps(sock_pids))
 
         try:
             resp = {}
@@ -240,7 +240,7 @@ class ParameterServer(object):
 
                     self.log.info('addr:{}'.format(addr))
                     try:
-                        resp = self.__route({"addr": addr, "length": expected, "content": ujson.loads(data)})
+                        resp = self.__route({"addr": addr, "length": expected, "content": json.loads(data)})
                     except ValueError as e:
                         raise Exception(e)
 
@@ -336,7 +336,7 @@ class ParameterServer(object):
             else:
                 # check for all completion boardcasts
                 with self.done_lock:
-                    peers = ujson.loads(self.cache.get('peer_status'))
+                    peers = json.loads(self.cache.get('peer_status'))
                     done_count = sum([int(p['done']) for p in peers])
 
                     if len(peers) == done_count:
@@ -368,9 +368,9 @@ class ParameterServer(object):
             self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
         # Save log file path
-        sess = ujson.loads(self.cache.get(sess_id))
+        sess = json.loads(self.cache.get(sess_id))
         sess["log"] = log_path
-        self.cache.set(sess_id, ujson.dumps(sess))
+        self.cache.set(sess_id, json.dumps(sess))
 
         self.__train(sess_id, log)
         log.info('hyperedge time: {} (seconds)'.format(time()-start))
@@ -395,7 +395,7 @@ class ParameterServer(object):
         log.info('training...')
 
         # Setup variables for sharing gradients
-        sess = ujson.loads(self.cache.get(sess_id))
+        sess = json.loads(self.cache.get(sess_id))
 
         # Each session should create its own model
         nn = net.DevConv(seed=self.seed, log=log)
@@ -405,7 +405,7 @@ class ParameterServer(object):
         self.__local_train(sess_id, nn, conf, async=self.async_local, log=log)
 
         # Update session model rank
-        sess = ujson.loads(self.cache.get(sess_id))
+        sess = json.loads(self.cache.get(sess_id))
         log.info('acc before allreduce: {}'.format(sess["accuracy"]))
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
@@ -414,16 +414,15 @@ class ParameterServer(object):
 
         # Final validation
         # Retrieve gradients in session shared by peers
-        sess = ujson.loads(self.cache.get(sess_id))
+        sess = json.loads(self.cache.get(sess_id))
         sess['train_size'] += sess['share_train_sizes']
-        log.debug('addgrads: {}'.format(sess['gradients']))
         nn.add_batched_coordinates(sess['gradients'], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
         # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
         sess["done"] = True
-        self.cache.set(sess_id, ujson.dumps(sess))
+        self.cache.set(sess_id, json.dumps(sess))
 
         # compare recently trained hyperedge model with current best
         self.update_best(sess_id, log=log)
@@ -534,7 +533,7 @@ class ParameterServer(object):
         accuracy = -1
 
         with self.best_lock:
-            model = ujson.loads(self.cache.get('best'))
+            model = json.loads(self.cache.get('best'))
             parameters = model["parameters"]
             accuracy = model["accuracy"]
 
@@ -562,7 +561,7 @@ class ParameterServer(object):
 
         try:
             # save parameters so can calculate difference (gradient) after training
-            self.cache.set(sess_id, ujson.dumps({"parameters": parameters, "accuracy": accuracy, "val_size": 0, 
+            self.cache.set(sess_id, json.dumps({"parameters": parameters, "accuracy": accuracy, "val_size": 0, 
                                                 "train_size": 0, "party": peers, "pid": 0, "ep_losses": [],
                                                 "log": log_path, "share_count": 0, "gradients": [], 
                                                 "share_train_sizes": 0, "train_batches": 0, "val_batches": 0,
@@ -599,10 +598,10 @@ class ParameterServer(object):
             log.error('invalid session id: {}'.format(sess_id))
             return ok, {}
 
-        sess = ujson.loads(self.cache.get(sess_id))
+        sess = json.loads(self.cache.get(sess_id))
         sess.update(data)
 
-        return self.cache.set(sess_id, ujson.dumps(sess)), sess
+        return self.cache.set(sess_id, json.dumps(sess)), sess
 
 
     '''
@@ -627,10 +626,10 @@ class ParameterServer(object):
             log.error('invalid key: {}, value: {}'.format(key, value))
             return ok, {}
 
-        sess = ujson.loads(self.cache.get(sess_id))
+        sess = json.loads(self.cache.get(sess_id))
         sess[key] = value
 
-        return self.cache.set(sess_id, ujson.dumps(sess)), sess
+        return self.cache.set(sess_id, json.dumps(sess)), sess
 
 
     '''
@@ -648,10 +647,10 @@ class ParameterServer(object):
             return ok, {}
 
         with self.best_lock:
-            best = ujson.loads(self.cache.get('best'))
+            best = json.loads(self.cache.get('best'))
             log.debug('before updating best: {}'.format(best['accuracy']))
 
-        update = ujson.loads(self.cache.get(sess_id))
+        update = json.loads(self.cache.get(sess_id))
 
         if update['accuracy'] <= best['accuracy']:
             return ok, {}
@@ -663,7 +662,7 @@ class ParameterServer(object):
 
         with self.best_lock:
             log.debug('after updating best: {}'.format(best['accuracy']))
-            ok = self.cache.set('best', ujson.dumps(best))
+            ok = self.cache.set('best', json.dumps(best))
 
         return ok, best
 
@@ -689,7 +688,7 @@ class ParameterServer(object):
         if self.dev:
             active = []
             for i, sess in enumerate(sessions):
-                if ujson.loads(sess)['done']:
+                if json.loads(sess)['done']:
                     active.append((active_ids[i], sess))
 
             return active
@@ -719,7 +718,7 @@ class ParameterServer(object):
         if len(active) == 0:
             return list(possible_cliques.pop(0))
 
-        active_edges = [ujson.loads(a[1])['party'] for a in active]
+        active_edges = [json.loads(a[1])['party'] for a in active]
         shuffle(active_edges)
 
         # Check to ensure that overlapping cliques are not formed
@@ -788,7 +787,7 @@ class ParameterServer(object):
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
         while 1:
-            sess = ujson.loads(self.cache.get(sess_id))
+            sess = json.loads(self.cache.get(sess_id))
             share_count = sess['share_count']
 
             if int(share_count) == len(sess['party']): break
@@ -865,13 +864,13 @@ class ParameterServer(object):
 
                 record = {}
                 with self.best_lock:
-                    record = ujson.loads(self.cache.get('best'))
+                    record = json.loads(self.cache.get('best'))
                 
                 me = dict(self.me)
                 me['accuracy'] = record['accuracy']
                 log.debug('initiating with best: {}'.format(me['accuracy']))
 
-                self.cache.set(sess_id, ujson.dumps({"id": sess_id, "log": log_path,
+                self.cache.set(sess_id, json.dumps({"id": sess_id, "log": log_path,
                                                      "share_train_sizes": 0, "share_count": 0, 
                                                      "gradients": [], "done": False, "type": 0}))
                 return me
@@ -890,7 +889,7 @@ class ParameterServer(object):
     '''
     def __synchronize_parameters(self, sess_id, best, peers, sender, parameters=[], accuracy=0):
         # Get log
-        log_name = ujson.loads(self.cache.get(sess_id))["log"]
+        log_name = json.loads(self.cache.get(sess_id))["log"]
         log, log_path = utils.log(self.me['alias'], self.log_dir, log_name)
         log.info('api:synchronize_parameters')
 
@@ -912,7 +911,7 @@ class ParameterServer(object):
 
             if best['host'] == self.me['host']:
                 with self.best_lock:
-                    sess = ujson.loads(self.cache.get('best'))
+                    sess = json.loads(self.cache.get('best'))
                     sess["party"] = peers
                     parameters = sess["parameters"]
                     log.debug('synchronizing with my best: {}'.format(sess['accuracy']))
@@ -928,8 +927,8 @@ class ParameterServer(object):
                 parameters = resp[0]
                 sess = {"parameters": parameters, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
 
-            sess.update(ujson.loads(self.cache.get(sess_id)))
-            ok = self.cache.set(sess_id, ujson.dumps(sess))
+            sess.update(json.loads(self.cache.get(sess_id)))
+            ok = self.cache.set(sess_id, json.dumps(sess))
         else:
             # Else parameters were explicitely given, so update with those
             ok, sess = self.extend_model(sess_id, {"accuracy": accuracy, "parameters": parameters, "party": peers}, log=log)
@@ -960,11 +959,11 @@ class ParameterServer(object):
             print 'sessDNE sess_id: {}'.format(sess_id)
             return [], -1
 
-        log_name = ujson.loads(self.cache.get(sess_id))["log"]
+        log_name = json.loads(self.cache.get(sess_id))["log"]
         log, log_path = utils.log(self.me['alias'], self.log_dir, log_name)
         log.info('api:get_parameters sess_id: {}'.format(sess_id))
 
-        model = ujson.loads(self.cache.get(sess_id))
+        model = json.loads(self.cache.get(sess_id))
 
         if model == None:
             return [], -2
@@ -989,7 +988,7 @@ class ParameterServer(object):
             print 'sessDNE sess_id: {}'.format(sess_id)
             return False
 
-        sess = ujson.loads(self.cache.get(sess_id))
+        sess = json.loads(self.cache.get(sess_id))
 
         # Get log
         try:
@@ -998,7 +997,7 @@ class ParameterServer(object):
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
             sess['share_train_sizes'] = samples + int(sess['share_train_sizes'])
-            self.cache.set(sess_id, ujson.dumps(sess))
+            self.cache.set(sess_id, json.dumps(sess))
         except KeyError as e:
             self.log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
             return 'invalid'
@@ -1019,10 +1018,10 @@ class ParameterServer(object):
     '''
     def done(self, sender):
         with self.done_lock:
-            peers = ujson.loads(self.cache.get('peer_status'))
+            peers = json.loads(self.cache.get('peer_status'))
             i = next((i for (i, d) in enumerate(peers) if d['alias'] == sender), None)
             peers[i]['done'] = 1
-            self.cache.set('peer_status', ujson.dumps(peers))
+            self.cache.set('peer_status', json.dumps(peers))
 
 
     '''
@@ -1064,7 +1063,7 @@ class ParameterServer(object):
         try:
             self.pc.teardown()
             self.log.info('exiting ps')
-            [os.kill(pid, signal.SIGTERM) for pid in ujson.loads(self.cache.get('sock_pids'))]
+            [os.kill(pid, signal.SIGTERM) for pid in json.loads(self.cache.get('sock_pids'))]
             sys.exit(0)
         except Exception as e:
             self.log.error(e)

@@ -145,6 +145,7 @@ class Network(nn.Module):
             if isinstance(network[0], FloatTensor):
                 gradients = [b-a for (b, a) in zip(self.get_parameters(reference=True), network)]
             elif isinstance(network[0], list):
+                # Creating an entire tensor is slow, but need a way to do point-wise subtraction efficiently
                 gradients = [b-FloatTensor(a) for (b, a) in zip(self.get_parameters(reference=True), network)]
         else:
             self.log.error('Error: {} type not supported'.format(type(network)))

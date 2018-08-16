@@ -12,7 +12,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from multiprocessing import current_process
 from torch import no_grad
 import parameter_tools as pt
-import os, logging, ujson, psutil
+import os, logging, json, psutil
 
 
 class Trainer(object):
@@ -80,7 +80,7 @@ class Trainer(object):
         acc = 100. * correct / self.val_size
         self.log.info('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(test_loss, correct, self.val_size, acc))
 
-        return acc
+        return acc.data.tolist()
 
 
     '''
@@ -113,14 +113,14 @@ class DistributedTrainer(Trainer):
     cache train set and validation set sizes, and final validation accuracy with parameter server
     '''
     def share(self):
-        sess = ujson.loads(self.cache.get(self.sess_id))
+        sess = json.loads(self.cache.get(self.sess_id))
         sess['ep_losses'] = self.ep_losses
         sess['train_size'] = self.train_size
         sess['val_size'] = self.val_size
         sess['accuracy'] = self.validations[-1]
         sess['train_batches'] = self.num_train_batches
         sess['val_batches'] = self.num_val_batches
-        self.cache.set(self.sess_id, ujson.dumps(sess))
+        self.cache.set(self.sess_id, json.dumps(sess))
 
 
 '''
