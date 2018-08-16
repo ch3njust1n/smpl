@@ -25,6 +25,7 @@ Output: log       (logging.Logger)   Logger object
         path      (string)           Absolute path to log file
 '''
 def log(alias, directory, filename, mode='a', level=logging.DEBUG):
+    # why is this if block here if i end up appending .log to the filename again below?
     if filename.endswith('.log'):
         filename = filename.split('.')[0]
 

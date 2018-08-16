@@ -49,6 +49,10 @@ class ParameterServer(object):
         self.me = utils.get_me(self.peers, eth=self.eth)
 
         self.log_dir = os.path.join(os.getcwd(), 'logs')
+        # Clear previous logs
+        for file in os.listdir(self.log_dir):
+            if file.endswith('.log'): os.remove(os.path.join(self.log_dir, file))
+
         self.log, self.log_path = utils.log(self.me['alias'], self.log_dir, 'ps{}'.format(self.me['id']), level=self.log_level)
         self.cache              = redis.StrictRedis(host='localhost', port=6379, db=0)
 
@@ -97,10 +101,6 @@ class ParameterServer(object):
             # For testing only so that we can see a difference in the parameters across peers
             if self.dev:
                 self.seed = self.me['id']
-
-            # Clear previous logs
-            for file in os.listdir(self.log_dir):
-                if file.endswith('.log'): os.remove(os.path.join(self.log_dir, file))
 
             if self.dev:
                 # CUDA/GPU settings

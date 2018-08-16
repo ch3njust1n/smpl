@@ -179,6 +179,7 @@ class Network(nn.Module):
         
         cd = []
         gd = []
+        s = []
         
         # extract coordinate-gradient pairs and combine gradients at the same coordinate
         for c in coords:
