@@ -175,57 +175,54 @@ class Network(nn.Module):
             avg    (int, optional)   Averaging factor
 
     '''
-    def add_coordinates(self, index, coords, lr, avg=1):
-        
-        cd = []
-        gd = []
+    def add_coordinates(self, layer_index, coordinates, lr, avg=1):
+        param_coords = []
+        gradients = []
         s = []
-        i = None
         
         # extract coordinate-gradient pairs and combine gradients at the same coordinate
-        for c in coords:
-            point = c[0][1:]
-            c[1] /= avg
+        for coord in coordinates:
+            cd = coord[0][1:]
+            coord[1] /= avg
             
-            if point in cd:
-                gd[cd.index(point)] += (c[1])
+            if cd in param_coords:
+                parameters[param_coords.index(cd)] += (coord[1])
             else:
-                cd.append(point)
-                gd.append(c[1])
+                param_coords.append(cd)
+                gradients.append(coord[1])
 
         # get corresponding parameters
         params = [p for p in self.parameters()]
 
         # create coordinate/index tensor i, and value tensor v
         try:
-            i = LongTensor(cd)
-            v = FloatTensor(gd)
-            s = list(params[index].size())
+            grads = FloatTensor(gradients)
+            shape = list(params[layer_index].size())
 
-            # ensure that size has two coordinates e.g. prevent cases like (2L,)
-            if len(s) == 1:
-                s.append(1)
+            if len(shape) > 1:
+                # update parameters with gradients at particular coordinates
+                grads = sparse.FloatTensor(LongTensor(param_coords).t(), grads, Size(shape)).to_dense()
 
-            # update parameters with gradients at particular coordinates
-            grads = sparse.FloatTensor(i.t(), v, Size(s)).to_dense()
-            params[index].data.add_(-lr*grads)
-        except ValueError as e:
-            self.log.exception('%s', e)
+            params[layer_index].data.add_(-lr*grads)
+        except Exception as e:
+            self.log.exception("Unexpected exception! %s", e)
 
 
     '''
-    Update parameters across the network in parallel.
-    This should only be used after back-propagation.
-
-    TODO: 1.  Multiply by learning rate, and add to model 
-              Refer to Large Scale Distributed Deep Networks, Dean et al, 2012
-
-    Input: coords (list) Nested list of lists containing coordinate-gradient pairs from parameter_tools.largest_k()
-            e.g. [[[0, 0, 0], 0.23776602745056152], [[0, 0, 1], -0.09021180123090744], [[1, 0, 0], 0.10222198069095612]]]
-           lr  (float, optional) Learning rate to apply to distributed gradients. If want add mechanism for handling stale
-                                 gradients such as an adaptive learning rate, best create a function for that for the gradients 
-                                 collected from allreduce() and then pass those outputs to this function.
-           avg (int, optional)   Distributed batch size to average over
+        Add gradients to network parameters in parallel by layer
+        This should only be used after back-propagation.
+        Inputs: coords (list)            Nested list of lists containing coordinate-gradient pairs from parameter_tools.largest_k()
+                e.g. coords = [
+                               # layer 0 at coordinate (0,0,0,0) using a nn.Conv2d
+                               [[0, 0, 0, 0, 0], -0.272732138633728], 
+                               # layer 1 at coordinate (0,0) using a nn.Linear
+                               [[1, 0, 0], 0.8884029388427734],
+                               ...
+                              ]
+                lr     (float, optional) Learning rate to apply to distributed gradients. If want add mechanism for handling stale
+                                         gradients such as an adaptive learning rate, best create a function for that for the gradients 
+                                         collected from allreduce() and then pass those outputs to this function.
+                avg    (int, optional)   Distributed batch size to average over
     '''
     def add_batched_coordinates(self, coords, lr=1, avg=1):
         start_time = time()
@@ -239,17 +236,15 @@ class Network(nn.Module):
 
         for coord_val_pair in sorted_coords:
             layer = coord_val_pair[0][0]
-            layer_dim = len(coord_val_pair[0])
-            layer_type = '{}-{}'.format(layer_dim, layer)
 
-            if layer_type in params_coords:
-                params_coords[layer_type].append(coord_val_pair)
+            if layer in params_coords:
+                params_coords[layer].append(coord_val_pair)
             else:
-                params_coords[layer_type] = coord_val_pair
-                
+                params_coords[layer] = [coord_val_pair]
+
         # update parameters in parallel
-        for k in params_coords.keys():
-            p = Process(target=self.add_coordinates, args=(k, params_coords[k], lr, avg,))
+        for layer_index in params_coords.keys():
+            p = Process(target=self.add_coordinates, args=(layer_index, params_coords[layer_index], lr, avg,))
             p.start()
             processes.append(p)
 

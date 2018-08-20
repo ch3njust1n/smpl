@@ -418,7 +418,7 @@ class ParameterServer(object):
         # Retrieve gradients in session shared by peers
         sess = json.loads(self.cache.get(sess_id))
         sess['train_size'] += sess['share_train_sizes']
-        nn.add_batched_coordinates(sess['gradients'], lr=self.lr, avg=sess['train_size'])
+        nn.add_batched_coordinates(sess['gradients'][0], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
         # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
