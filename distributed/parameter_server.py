@@ -68,27 +68,29 @@ class ParameterServer(object):
         self.log.info('Mode: {}'.format(mode))
         # Distributed training parameters
         if mode == 0:
-            self.ds_host        = args.ds_host
-            self.ds_port        = args.ds_port
-            self.host           = args.host
-            self.port           = args.port
-            self.workers        = (cpu_count()-args.regular)/(args.regular)
+            self.ds_host            = args.ds_host
+            self.ds_port            = args.ds_port
+            self.host               = args.host
+            self.port               = args.port
+            self.workers            = (cpu_count()-args.regular)/(args.regular)
 
-            self.async_global   = args.async_global
-            self.async_mid      = args.async_mid
-            self.async_local    = args.async_local
-            self.dev            = args.dev
-            self.epsilon        = args.epsilon
-            self.hyperepochs    = args.hyperepochs
-            self.lr             = args.learning_rate
-            self.name           = args.name
-            self.parallel       = args.local_parallel
-            self.regular        = args.regular
-            self.save           = args.save
-            self.sparsity       = args.sparsity
-            self.uniform        = args.uniform
-            self.uniform_ex     = self.uniform-1 # number of peers in an edge excluding itself
-            self.variety        = args.variety
+            self.async_global       = args.async_global
+            self.async_mid          = args.async_mid
+            self.async_local        = args.async_local
+            self.communication_only = args.communication_only
+            self.dev                = args.dev
+            self.dist_lr            = args.dist_lr
+            self.epsilon            = args.epsilon
+            self.hyperepochs        = args.hyperepochs
+            self.lr                 = args.learning_rate
+            self.name               = args.name
+            self.parallel           = args.local_parallel
+            self.regular            = args.regular
+            self.save               = args.save
+            self.sparsity           = args.sparsity
+            self.uniform            = args.uniform
+            self.uniform_ex         = self.uniform-1 # number of peers in an edge excluding itself
+            self.variety            = args.variety
 
             self.__clear_port()
 
@@ -117,7 +119,7 @@ class ParameterServer(object):
             # Track best set of parameters. Equivalent of "global" params in central server model.
             # Stash this server's info
             self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
-                                                "parameters": [x.data.tolist() for x in net.DevConv(self.seed, self.log).parameters()],
+                                                "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()],
                                                 "alias": self.me['alias']}))
             self.cache.set('server', json.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
             self.cache.set('curr_edges', 0)
@@ -152,7 +154,7 @@ class ParameterServer(object):
 
             # Setup model and train locally
             sess_id = self.get_id()
-            nn = net.DevConv(seed=self.seed, log=self.log)
+            nn = net.DevNet(seed=self.seed, log=self.log)
             parameters = [x.data.tolist() for x in nn.parameters()]
             self.log.info('depth: {}'.format(len(parameters)/2))
             self.cache.set(sess_id, json.dumps({"parameters": parameters, "accuracy": 0.0, "val_size": 0, 
@@ -398,7 +400,7 @@ class ParameterServer(object):
         sess = json.loads(self.cache.get(sess_id))
 
         # Each session should create its own model
-        nn = net.DevConv(seed=self.seed, log=log)
+        nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(sess['parameters'])
         conf = (log, sess_id, self.cache, nn, self.dataset, self.device, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
 
@@ -939,7 +941,7 @@ class ParameterServer(object):
             log.error('No party key, len(sess): {}'.format(len(sess)))
 
         # Start locally training
-        nn = net.DevConv(seed=self.seed, log=log)
+        nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(parameters)
         Process(target=self.__train, args=(sess_id, log,)).start()
 
