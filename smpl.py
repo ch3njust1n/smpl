@@ -26,10 +26,14 @@ def main():
     parser.add_argument('--async_mid', type=bool, default=True, help='Set for asynchronous training within hyperedges (default: True)')
     parser.add_argument('--async_local', type=bool, default=True, help='Set for asynchronous training on each peer (default: True)')
     parser.add_argument('--batch_size', type=int, default=16, help='Data batch size (default: 16)')
+    parser.add_argument('--communication_only', '-c', action='store_true', help='Run a Monte Carlo simulation on communication \
+                        topology. Training is disabled during simulation. (default: False)')
     parser.add_argument('--cuda', type=str2bool, default=False, help='Enables CUDA training (default: False)')
     parser.add_argument('--data', '-d', type=str, default='mnist', help='Data directory (default: mnist)')
     parser.add_argument('--dev', '-v', type=str2bool, default=True, help='Development mode will fix random \
                         seed and keep session objects for analysis (default: True)')
+    parser.add_argument('--dist_lr', type=float, default=0.1, help='Percentage of peers\' gradients to include to avoid \
+                        complete hyperedge collapse. (default: 0.1)')
     parser.add_argument('--drop_last', type=bool, default=False, help='True if last batch should be dropped if \
                         the dataset is not divisible by the batch size (default: False)')
     parser.add_argument('--ds_host', type=str, default='128.31.26.25', help='Data server host address')
@@ -43,7 +47,7 @@ def main():
                         across all cliques for this peer (default: 1)')
     parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
-    parser.add_argument('--learning_rate', '-lr', type=int, default=1e-3, help='Learning rate (default: 1e-3)')
+    parser.add_argument('--learning_rate', '-lr', type=float, default=1e-3, help='Learning rate (default: 1e-3)')
     parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training (default: 100)')
     parser.add_argument('--log_level', type=int, default=logging.DEBUG, help='Logging level. Set to 100 to supress all logs.')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment (default: MNIST)')

@@ -140,7 +140,7 @@ class Network(nn.Module):
         gradients = []
 
         if isinstance(network, Network):
-            gradients = [b-a for (b, a) in zip(sself.get_parameters(reference=True), network.parameters())]
+            gradients = [b-a for (b, a) in zip(self.get_parameters(reference=True), network.parameters())]
         elif isinstance(network, list) and len(network) > 0:
             if isinstance(network[0], FloatTensor):
                 gradients = [b-a for (b, a) in zip(self.get_parameters(reference=True), network)]
@@ -175,53 +175,54 @@ class Network(nn.Module):
             avg    (int, optional)   Averaging factor
 
     '''
-    def add_coordinates(self, index, coords, lr, avg=1):
-        
-        cd = []
-        gd = []
+    def add_coordinates(self, layer_index, coordinates, lr, avg=1):
+        param_coords = []
+        gradients = []
+        s = []
         
         # extract coordinate-gradient pairs and combine gradients at the same coordinate
-        for c in coords:
-            point = c[0][1:]
-            c[1] /= avg
+        for coord in coordinates:
+            cd = coord[0][1:]
+            coord[1] /= avg
             
-            if point in cd:
-                gd[cd.index(point)] += (c[1])
+            if cd in param_coords:
+                parameters[param_coords.index(cd)] += (coord[1])
             else:
-                cd.append(point)
-                gd.append(c[1])
+                param_coords.append(cd)
+                gradients.append(coord[1])
 
         # get corresponding parameters
         params = [p for p in self.parameters()]
 
         # create coordinate/index tensor i, and value tensor v
         try:
-            i = LongTensor(cd)
-            v = FloatTensor(gd)
-            s = list(params[index].size())
+            grads = FloatTensor(gradients)
+            shape = list(params[layer_index].size())
+
+            if len(shape) > 1:
+                # update parameters with gradients at particular coordinates
+                grads = sparse.FloatTensor(LongTensor(param_coords).t(), grads, Size(shape)).to_dense()
+
+            params[layer_index].data.add_(-lr*grads)
         except Exception as e:
             self.log.exception("Unexpected exception! %s", e)
 
-        # ensure that size has two coordinates e.g. prevent cases like (2L,)
-        if len(s) == 1:
-            s.append(1)
-
-        # update parameters with gradients at particular coordinates
-        grads = sparse.FloatTensor(i.t(), v, Size(s)).to_dense()
-        params[index].data.add_(-lr*grads) # Commenting out for now. Refer to issue #48
-
 
     '''
-    Update parameters across the network in parallel.
-    This should only be used after back-propagation.
-
-    TODO: 1.  Multiply by learning rate, and add to model 
-              Refer to Large Scale Distributed Deep Networks, Dean et al, 2012
-
-    Input: coords (list) Nested list of lists containing coordinate-gradient pairs from parameter_tools.largest_k()
-            e.g. [[[0, 0, 0], 0.23776602745056152], [[0, 0, 1], -0.09021180123090744], [[1, 0, 0], 0.10222198069095612]]]
-           lr  (float, optional)
-           avg (int, optional)
+        Add gradients to network parameters in parallel by layer
+        This should only be used after back-propagation.
+        Inputs: coords (list)            Nested list of lists containing coordinate-gradient pairs from parameter_tools.largest_k()
+                e.g. coords = [
+                               # layer 0 at coordinate (0,0,0,0) using a nn.Conv2d
+                               [[0, 0, 0, 0, 0], -0.272732138633728], 
+                               # layer 1 at coordinate (0,0) using a nn.Linear
+                               [[1, 0, 0], 0.8884029388427734],
+                               ...
+                              ]
+                lr     (float, optional) Learning rate to apply to distributed gradients. If want add mechanism for handling stale
+                                         gradients such as an adaptive learning rate, best create a function for that for the gradients 
+                                         collected from allreduce() and then pass those outputs to this function.
+                avg    (int, optional)   Distributed batch size to average over
     '''
     def add_batched_coordinates(self, coords, lr=1, avg=1):
         start_time = time()
@@ -233,16 +234,17 @@ class Network(nn.Module):
         params_coords = {}
         sorted_coords = sorted(coords, key=lambda x: x[0][0])
 
-        for l in sorted_coords:
-            layer = l[0][0]
-            if layer[0] in params_coords:
-                params_coords[layer[0]].append(l)
+        for coord_val_pair in sorted_coords:
+            layer = coord_val_pair[0][0]
+
+            if layer in params_coords:
+                params_coords[layer].append(coord_val_pair)
             else:
-                params_coords[layer[0]] = l
+                params_coords[layer] = [coord_val_pair]
 
         # update parameters in parallel
-        for k in params_coords.keys():
-            p = Process(target=self.add_coordinates, args=(k, params_coords[k], lr, avg,))
+        for layer_index in params_coords.keys():
+            p = Process(target=self.add_coordinates, args=(layer_index, params_coords[layer_index], lr, avg,))
             p.start()
             processes.append(p)
 
@@ -259,18 +261,33 @@ Train on MNIST
 class DevNet(Network):
     def __init__(self, seed, log):
         super(DevNet, self).__init__(seed=seed, log=log)
-        self.fc1 = nn.Linear(784, 50)
+        self.fc1 = nn.Linear(784, 10)
+        self.loss = F.nll_loss
+
+    def forward(self, x):
+        return F.log_softmax(self.fc1(x.view(-1, 784)), dim=1)
+
+
+class DevConvSmall(Network):
+    def __init__(self, seed, log):
+        super(DevConv, self).__init__(seed=seed, log=log)
+        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        self.conv2_drop = nn.Dropout2d()
+        self.fc1 = nn.Linear(320, 50)
         self.fc2 = nn.Linear(50, 10)
         self.loss = F.nll_loss
 
-
     def forward(self, x):
-        x = x.view(-1, 784)
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
+        x = x.view(-1, 320)
         x = F.relu(self.fc1(x))
+        x = F.dropout(x, training=self.training)
         return F.log_softmax(self.fc2(x), dim=1)
 
 
-class DevConv(Network):
+class DevConvFull(Network):
     def __init__(self, seed, log):
         super(DevConv, self).__init__(seed=seed, log=log)
         self.conv1 = nn.Conv2d(1, 10, kernel_size=5)

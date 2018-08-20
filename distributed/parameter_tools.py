@@ -66,7 +66,7 @@ Input: tensors   (list) List of PyTorch FloatTensors
 Output: (list) List of lists containing coordinates-parameter pairs
         e.g. [[[0, 0, 0], -0.43671706318855286], [[0, 0, 1], -0.4151779115200043], [[1, 0, 0], 0.19337968528270721]]
 '''
-def largest_k(tensors, k=1, percent=True, zeros=False, magnitude=True, tensor=False):
+def largest_k(tensors, k=1, percent=True, zeros=False, magnitude=True, to_list=True):
     
     flat = []
     dims = []
@@ -106,9 +106,6 @@ def largest_k(tensors, k=1, percent=True, zeros=False, magnitude=True, tensor=Fa
         raise Exception('k must be in range [0, %d]\ntotal parameters: %d' % (total, total))
 
     # Find top-k values and corresponding coordinates in the original tensors
-    if not tensor:
-        merged
-
     top, coord_1d = torch.topk(torch.abs(merged), k) if magnitude else torch.topk(merged, k)
     top = torch.gather(merged, 0, to_cuda(torch.LongTensor(coord_1d.tolist()), use_cuda))
     coord_1d = sorted([(t, c) for (t, c) in zip(top, coord_1d)], key=lambda x: x[1])
@@ -139,7 +136,7 @@ def largest_k(tensors, k=1, percent=True, zeros=False, magnitude=True, tensor=Fa
             axises.append(grad)
 
             for point in zip(*axises[:]):
-                g = point[-1] if tensor else point[-1].data.tolist()
+                g = point[-1] if not to_list else point[-1].data.tolist()
                 
                 if zeros or (not zeros and g != 0):
                     c = list(point[:-1])
