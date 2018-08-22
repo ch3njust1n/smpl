@@ -341,7 +341,7 @@ class ParameterServer(object):
                     peers = json.loads(self.cache.get('peer_status'))
                     done_count = sum([int(p['done']) for p in peers])
 
-                    if len(peers) == done_count:
+                    if len(peers) == done_count or (self.communication_only and len(procs) == 0):
                         break
                         
         self.log.info('hypergraph complete')
@@ -354,28 +354,32 @@ class ParameterServer(object):
     def __train_hyperedge(self):
         start = time()
         log, log_path = utils.log(self.me['alias'], self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.get_date()), level=self.log_level)
-        log.info('train_hyperedge')
-
-        connected = False
         sess_id = ''
 
-        while len(sess_id) == 0:
-            # establish clique
-            sleep(uniform(0,3))
-            sess_id = self.__init_session(log=log, log_path=log_path)
+        if self.communication_only:
+            # only need peers and don't need to call self.kill_session()
+            # because establish_session() does not create a session if in communication_only mode
+            sess_id = self.get_id()
+            peers = [x['alias'] for x in self.__establish_clique({"id": sess_id, "me": self.me}) if len(x) > 0]
+            self.cache.set(sess_id, 'time: {}, me: {}, peers: {}, accuracy: {}'.format(time(), self.me['alias'], peers, 0))
+        else:
+            while len(sess_id) == 0:
+                # establish clique
+                sleep(uniform(0,3))
+                sess_id = self.__init_session(log=log, log_path=log_path)
 
-        log.info('session id: {}'.format(sess_id))
+            log.info('session id: {}'.format(sess_id))
 
-        with self.count_lock:
-            self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
+            with self.count_lock:
+                self.cache.set('curr_edges', int(self.cache.get('curr_edges'))+1)
 
-        # Save log file path
-        sess = json.loads(self.cache.get(sess_id))
-        sess["log"] = log_path
-        self.cache.set(sess_id, json.dumps(sess))
+            # Save log file path
+            sess = json.loads(self.cache.get(sess_id))
+            sess["log"] = log_path
+            self.cache.set(sess_id, json.dumps(sess))
 
-        self.__train(sess_id, log)
-        log.info('hyperedge time: {} (seconds)'.format(time()-start))
+            self.__train(sess_id, log)
+            log.info('hyperedge time: {} (seconds)'.format(time()-start))
 
 
     '''
@@ -842,12 +846,15 @@ class ParameterServer(object):
 
     '''
     External API
-    Reply to request to establish a session
+    Reply to request to establish a session or if in communication only mode, just return your id.
 
     Input: sess_id (str)
     Output: {alias, host, port, accuracy}
     '''
     def __establish_session(self, sess_id):
+        if self.communication_only:
+            return self.me
+
         # Setup logging for hyperedge
         log_name = '{}-{}'.format(self.me['id'], sess_id)
         log, log_path = utils.log(self.me['alias'], self.log_dir, log_name, mode='w', level=self.log_level)

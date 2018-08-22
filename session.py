@@ -215,12 +215,12 @@ class ToolBox(object):
 
 def main():
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--host', type=str, default='localhost', help='Redis host')
-	parser.add_argument('--port', type=int, default=6379, help='Redis port')
+	parser.add_argument('--host', type=str, default='localhost', help='Redis host (default: localhost)')
+	parser.add_argument('--port', type=int, default=6379, help='Redis port (default: 6379)')
 	parser.add_argument('--case', '-c', action='store_true', help='Set for case sensitive matching when using the --grep option')
 	parser.add_argument('--check', '-ch', action='store_true', help='Check that all hyperedges completed training')
 	parser.add_argument('--clear', action='store_true', help='Clear all logs')
-	parser.add_argument('--db', type=int, default=0, help='Redis db')
+	parser.add_argument('--database', '-db', type=int, default=0, help='Redis db')
 	parser.add_argument('--edges', '-e', action='store_true', help='Display edge count')
 	parser.add_argument('--grep', '-g', type=str, help='Grep all files for given term')
 	parser.add_argument('--ignore', '-i', type=str, nargs='+', help='Ignores a particular key/value in the session object')
@@ -231,7 +231,7 @@ def main():
 	parser.add_argument('--size', '-z', action='store_true', help='Get size of cache object')
 	parser.add_argument('--property', '-p', type=str, help='Session object property')
 	parser.add_argument('--properties', '-ps', action='store_true', help='Get all properties of object')
-	parser.add_argument('--pull', '-pl', action='store_true', help='Pull logs')
+	parser.add_argument('--pull', '-pl', action='store_true', help='Pull logs from all peers')
 	parser.add_argument('--variable', '-v', type=str, help='Retrieve state variable. If using this, do not set --sess')
 	args = parser.parse_args()
 

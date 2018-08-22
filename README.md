@@ -50,7 +50,45 @@ cd smpl #*** MUST CD into directory. Cannot do bash smpl/start.sh. Unsure why th
 bash start.sh
 ```
 
-#### Diagnose Runs
+#### Usage
+
+```
+Simultaneous Multi-Party Learning Training
+
+optional arguments:
+--host                  Host address (default: 0.0.0.0)
+--port                  Port number for GradientServer (default: 9888)
+--async_global          Set for globally asynchronous training (default: True)
+--async_mid             Set for asynchronous training within hyperedges (default: True)
+--async_local           Set for asynchronous training on each peer (default: True)
+--batch_size            Data batch size (default: 16)
+--cuda                  Enables CUDA training (default: False)
+--data -d               Data directory (default: mnist)
+--dev -v                Development mode will fix random seed and keep session objects for analysis (default: True) 
+--drop_last             True if last batch should be dropped if the dataset is not divisible by the batch size (default: False)
+--ds_host               Data server host address
+--ds_port               Data server port (default: 9888)
+--epsilon -x            Chance of selecting a random set model during parameter synchronization. (default: 1.0)
+--eth                   Peers ethernet interface (default: ens3)
+--flush -f              Clear all parameters from previous sessions (default: True)
+--hyperepochs -e        Total number of hyperepochs across all cliques for this peer (default: 1)
+--local_parallel -l     Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)
+--learning_rate -lr     Learning rate (default: 1e-3)
+--log_freq              Frequency for logging training (default: 100)					
+--name -n               Name of experiment (default: MNIST)
+--party -p              Name of party configuration file. (default: party.json)
+--regular -v            Maximum number of simultaneous hyperedges at any given time (default: 1)
+--save -s               Directory to save trained model parameters to
+--seed                  Random seed for dev only!
+--smpc 					Use secure multiparty computation
+--shuffle               True if data should be shuffled (default: True)
+--sparsity              Parameter sharing sparsification level (default: 0.0)
+--uniform -u            Hyperedge size (default: 2)
+--variety               Minimum number of new members required in order to enter into a new hyperedge. 
+                        Prevents perfectly overlapping with current sessions. (default: 1)
+```
+
+#### Diagnose Runs with session.py
 ```
 Pull logs and display training summary
 python session.py --check -pl
@@ -64,45 +102,26 @@ Examine a specific training session
 python session.py -s sess289609693563518796840060 -m -p parameters
 ```
 
-
-#### Usage
+#### session.py usage
 
 ```
-usage: smpl.py [-h] [--host H] [--port P] [--cuda T] [--mpc T] [--infer T] [--save S] [--seed S] 
-               [--log_freq L] [--name N] [-e E] [-i I] [-b B] [-m M] 
-               [--lr L] [--nlr N] [-l L] [-s S] [-r T] [-t T] [-a A]
-
-               
-Simultaneous Multi-Party Learning Training
-
-optional arguments:
---host                  Default host address (default: 0.0.0.0)
---port                  Port number for GradientServer (default: 9888)
---async_global          Set for globally asynchronous training (default: True)
---async_mid             Set for asynchronous training within hyperedges (default: True)
---async_local           Set for asynchronous training on each peer (default: True)
---batch_size            Data batch size (default: 16)
---cuda                  Enables CUDA training (default: False)
--d --data               Data directory (default: mnist)
--v --dev                Development mode will fix random seed and keep session objects for analysis (default: True) 
---drop_last             True if last batch should be dropped if the dataset is not divisible by the batch size (default: False)
---ds_host               Data server host address
---ds_port               Data server port (default: 9888)
--x --epsilon            Chance of selecting a random set model during parameter synchronization. (default: 1.0)
---eth                   Peers ethernet interface (default: ens3)
--f --flush              Clear all parameters from previous sessions (default: True)
--e --hyperepochs        Total number of hyperepochs across all cliques for this peer (default: 1)
--l --local_parallel     Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)
--lr --learning_rate     Learning rate (default: 1e-3)
---log_freq              Frequency for logging training (default: 100)
--n --name               Name of experiment (default: MNIST)
--p --party              Name of party configuration file. (default: party.json)
--v --regular            Maximum number of simultaneous hyperedges at any given time (default: 1)
--s --save               Directory to save trained model parameters to
---seed                  Random seed for dev only!
---shuffle               True if data should be shuffled (default: True)
---sparsity              Parameter sharing sparsification level (default: 0.0)
--u --uniform            Hyperedge size (default: 2)
---variety               Minimum number of new members required in order to enter into a new hyperedge. 
-                        Prevents perfectly overlapping with current sessions. (default: 1)
+optional arguements:
+--host                  Redis IP address (default: localhost)
+--port                  Redis port number (default: 6379)
+--case -c 				Set for case sensitive matching when using the --grep option
+--check -ch 			Check that all hyperedges completed training
+--clear 				Clear all logs
+--database db 			Name of Redis database
+--edges -e 				Display edge count
+--grep - g 				Grep all files for given term
+--ignore -i 			Ignores a particular key/value in the session object
+--keys -k 				Get all Redis keys
+--log_dir -l 			Log directory		
+--minimal -m 			Ignore parameters and gradients
+--sess -s 				Session objection id
+--size -z 				Get size of cache object
+--property -p 			Session object property
+--properties -ps 		Get all properties of object
+--pull -pl 				Pull logs from all peers
+--variable -v 			Retrieve state variable. If using this, do not set --sess
 ```
