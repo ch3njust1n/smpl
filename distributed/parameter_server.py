@@ -111,16 +111,17 @@ class ParameterServer(object):
                 else:
                     torch.manual_seed(self.seed)
 
-            # Get data
-            self.dataset = Dataset(self.cuda, self.batch_size, self.data, host=self.ds_host, port=self.ds_port)
+            if not self.communication_only:
+                # Get data
+                self.dataset = Dataset(self.cuda, self.batch_size, self.data, host=self.ds_host, port=self.ds_port)
 
-            # Setup parameter cache
-            # Network() was named generically intentionally so that users can plug-and-play
-            # Track best set of parameters. Equivalent of "global" params in central server model.
-            # Stash this server's info
-            self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
-                                                "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()],
-                                                "alias": self.me['alias']}))
+                # Setup parameter cache
+                # Network() was named generically intentionally so that users can plug-and-play
+                # Track best set of parameters. Equivalent of "global" params in central server model.
+                # Stash this server's info
+                self.cache.set('best', json.dumps({"accuracy": 0.0, "val_size": 0, "train_size": 0, "log": self.log_path,
+                                                    "parameters": [x.data.tolist() for x in net.DevNet(self.seed, self.log).parameters()],
+                                                    "alias": self.me['alias']}))
             self.cache.set('server', json.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
             self.cache.set('curr_edges', 0)
             self.cache.set('hyperedges', 0)
@@ -325,16 +326,19 @@ class ParameterServer(object):
             sleep(uniform(3,5))
             
             if len(procs) > 0:
-                with self.count_lock:
-                    if self.available():
-                        try:
-                            self.done_lock.acquire()
-                            procs.pop().start()
-                            self.cache.set('origin_edges', self.hyperepochs-len(procs))
-                            self.log.info('origin_edges: {}'.format(self.hyperepochs-len(procs)))
-                            self.done_lock.release()
-                        except IndexError:
-                            self.log.info('max hyperepochs')
+                if self.communication_only:
+                    procs.pop().start()
+                else:
+                    with self.count_lock:
+                        if self.available():
+                            try:
+                                self.done_lock.acquire()
+                                procs.pop().start()
+                                self.cache.set('origin_edges', self.hyperepochs-len(procs))
+                                self.log.info('origin_edges: {}'.format(self.hyperepochs-len(procs)))
+                                self.done_lock.release()
+                            except IndexError:
+                                self.log.info('max hyperepochs')
             else:
                 # check for all completion boardcasts
                 with self.done_lock:
@@ -361,7 +365,7 @@ class ParameterServer(object):
             # because establish_session() does not create a session if in communication_only mode
             sess_id = self.get_id()
             peers = [x['alias'] for x in self.__establish_clique({"id": sess_id, "me": self.me}) if len(x) > 0]
-            self.cache.set(sess_id, 'time: {}, me: {}, peers: {}, accuracy: {}'.format(time(), self.me['alias'], peers, 0))
+            self.cache.set(sess_id, [{'time': time(), 'me': self.me['alias'], 'peers': peers, 'accuracy': 0}])
         else:
             while len(sess_id) == 0:
                 # establish clique

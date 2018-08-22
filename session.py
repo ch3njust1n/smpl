@@ -14,7 +14,7 @@ from pprint import pprint
 
 class ToolBox(object):
 	def __init__(self, args):
-		self.cache = redis.StrictRedis(host=args.host, port=args.port, db=args.db)
+		self.cache = redis.StrictRedis(host=args.host, port=args.port, db=args.database)
 
 
 	'''
