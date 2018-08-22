@@ -365,7 +365,7 @@ class ParameterServer(object):
             # because establish_session() does not create a session if in communication_only mode
             sess_id = self.get_id()
             peers = [x['alias'] for x in self.__establish_clique({"id": sess_id, "me": self.me}) if len(x) > 0]
-            self.cache.set(sess_id, [{'time': time(), 'me': self.me['alias'], 'peers': peers, 'accuracy': 0}])
+            self.cache.set(sess_id, {'time': time(), 'me': self.me['alias'], 'peers': peers, 'accuracy': 0})
         else:
             while len(sess_id) == 0:
                 # establish clique

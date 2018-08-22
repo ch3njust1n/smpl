@@ -9,7 +9,7 @@
 '''
 
 from __future__ import division
-import redis, ujson, argparse, sys, os, subprocess
+import redis, ujson, argparse, sys, os, subprocess, ast
 from pprint import pprint
 
 class ToolBox(object):
@@ -29,7 +29,10 @@ class ToolBox(object):
 		if not self.cache.exists(var):
 			return 'key dne: {}'.format(var)
 		else:
-			return ujson.loads(self.cache.get(var))
+			try:
+				return ujson.loads(self.cache.get(var))
+			except ValueError:
+				return ast.literal_eval(self.cache.get(var))
 
 
 	'''
