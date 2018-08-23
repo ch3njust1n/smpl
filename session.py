@@ -11,6 +11,7 @@
 from __future__ import division
 import redis, ujson, argparse, sys, os, subprocess, ast
 from pprint import pprint
+from matplotlib import pyplot as plt
 
 class ToolBox(object):
 	def __init__(self, args):
@@ -18,12 +19,17 @@ class ToolBox(object):
 
 
 	'''
+	Display all keys
 	'''
 	def keys(self):
 		pprint('keys: {}'.format([key for key in self.cache.scan_iter("*")]))
 
 
 	'''
+	Return object corresponding to key
+
+	Input:  var   (String) Key to search for
+	Output: value corresponding to given key
 	'''
 	def get_object(self, var):
 		if not self.cache.exists(var):
@@ -71,8 +77,13 @@ class ToolBox(object):
 	'''
 	def pull_logs(self):
 		os.system('chmod +x ./logs/pull.sh')
-		log_dir = os.path.join(os.getcwd(), 'logs', 'pull.sh')
-		subprocess.call(log_dir, shell=True)
+		log_dir = os.path.join(os.getcwd(), 'logs')
+		pull_script = os.path.join(os.getcwd(), 'logs', 'pull.sh')
+		subprocess.call(pull_script, shell=True)
+
+		# Wait for directory to fill up before returning
+		while len(os.listdir(log_dir)) == 0:
+			sleep(1)
 
 
 	'''
@@ -157,9 +168,6 @@ class ToolBox(object):
 		if pull:
 			self.pull_logs()
 
-		while len(os.listdir(log_dir)) == 0:
-			sleep(0.5)
-
 		all_logs = []
 		ps_logs = []
 		for l in self.get_logs(log_dir):
@@ -188,6 +196,30 @@ class ToolBox(object):
 			print('no logs. rerun experiment.')
 
 
+	'''
+	Check all Monte Carlo simulation data
+
+	Inputs: log_dir (String) Path to log directory
+			pull 	(bool)   If True, pull Monte Carlo data from peers
+	'''
+	def check_mc_data(self, log_dir, pull=False):
+		if pull:
+			self.pull_logs()
+
+		data = []
+		for f in os.listdir(log_dir):
+			if f.startswith('mc') and f.endswith('json'):
+				with open(os.path.join(log_dir, f), 'r') as mc_data:
+					data.extend(ujson.load(mc_data))
+
+		pprint(data)
+
+
+	'''
+	Return list of formatted strings containing edge count information
+
+	Output: List
+	'''
 	def get_edges(self):
 		return ['origin edges: 	 {}'.format(self.get_object('origin_edges')),
 			    'current edges:   {}'.format(self.get_object('curr_edges')),
@@ -196,6 +228,9 @@ class ToolBox(object):
 
 	'''
 	Query session objects
+
+	Input: sess (String) 		 Session ID
+		   args (ArgumentParser) Arguments to query
 	'''
 	def query(self, sess, args):
 		result = sess
@@ -229,6 +264,7 @@ def main():
 	parser.add_argument('--ignore', '-i', type=str, nargs='+', help='Ignores a particular key/value in the session object')
 	parser.add_argument('--keys', '-k', action='store_true', help='Get all Redis keys')
 	parser.add_argument('--log_dir', '-l', type=str, default=os.path.join(os.getcwd(), 'logs'), help='Log directory')
+	parser.add_argument('--monte_carlo', '-mc', action='store_true', help='Set flag to inspect Monte Carlo simulation data. (default: False)')
 	parser.add_argument('--minimal', '-m', action='store_true', help='Ignore parameters and gradients')
 	parser.add_argument('--sess', '-s', type=str, help='Session objection id')
 	parser.add_argument('--size', '-z', action='store_true', help='Get size of cache object')
@@ -245,7 +281,10 @@ def main():
 		tb.clear(args.log_dir)
 
 	if args.check:
-		tb.check_logs(args.log_dir, pull=args.pull)
+		if args.monte_carlo:
+			tb.check_mc_data(args.log_dir, pull=args.pull)
+		else:
+			tb.check_logs(args.log_dir, pull=args.pull)
 
 	if args.edges:
 		tb.print_files(tb.get_edges(), 'variables')
