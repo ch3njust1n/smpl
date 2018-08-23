@@ -27,7 +27,7 @@ from subprocess import PIPE, Popen
 class ParameterServer(object):
     def __init__(self, args, mode):
         # General parameters
-        start_time = time()
+        self.ps_start_time = time()
         self.batch_size = args.batch_size
         self.cuda       = args.cuda
         self.data       = args.data
@@ -127,7 +127,10 @@ class ParameterServer(object):
                 # random score instead of validation accuracy for communication test
                 me = dict(self.me)
                 me['score'] = random()
-                self.cache.set('best_mc', me)
+                me['score_after'] = me['score']
+                me['time'] = 0
+                me['origin'] = me['alias']
+                self.cache.set('best_mc', [me])
 
             self.cache.set('server', json.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
             self.cache.set('curr_edges', 0)
@@ -152,7 +155,7 @@ class ParameterServer(object):
 
             # Init training
             self.async_train()
-            self.log.info('total time: {} (seconds)'.format(time()-start_time))
+            self.log.info('total time: {} (seconds)'.format(time()-self.ps_start_time))
 
             # Disconnect from hypergraph
             self.shutdown()
@@ -379,24 +382,36 @@ class ParameterServer(object):
         peers = [x for x in self.establish_clique({"id": sess_id, "me": self.me}) if len(x) > 0]
 
         if len(peers) > 0:
-            peers = sorted(peers, key=lambda x: x['score'], reverse=True)
-
             with self.best_lock:
+                # Get your list of best models
                 best_mc = ast.literal_eval(self.cache.get('best_mc'))
+                my_best = best_mc[-1]
+                my_best['origin'] = my_best['alias']
+                my_best['alias'] = self.me['alias']
+
+                # Record starting state of hyperedge
                 all_peers = list(peers)
-                all_peers.append(best_mc)
-                self.cache.set(sess_id, {'time': time(), 'me': self.me['alias'], 'peers': all_peers})
+                all_peers.append(my_best)
+                hyperedge_time = time()-self.ps_start_time
+                self.cache.set(sess_id, {'time': hyperedge_time, 'me': self.me['alias'], 'peers': all_peers})
 
-                # Simulate improving accuracy after synchronous training
-                peers[0]['score'] += random()
+                # Simulate improving accuracy of best selected model after synchronous training and adding to score
+                # Modify score with different distributions, negatives, etc. for different simulations
+                all_peers = sorted(all_peers, key=lambda x: x['score'], reverse=True)
+                best = dict(all_peers[0])
+                best['score'] = best['score_after']
+                best['score_after'] = best['score'] + random()
+                best['time'] = hyperedge_time
 
-                if peers[0]['score'] > best_mc['score']:
-                    self.cache.set('best_mc', peers[0])
+                if best['score_after'] > my_best['score']:
+                    best_mc.append(best)
+    
+                self.cache.set('best_mc', best_mc)
 
             # Synchronize score with all peers
             for i, send_to in enumerate(peers):
                 Thread(target=self.pc.psend, args=(send_to['host'], send_to['port'], 
-                       {"api": "mc_synchronize", "args": [sess_id, peers[0]]},)).start()
+                       {"api": "mc_synchronize", "args": [sess_id, best]},)).start()
 
 
     '''
@@ -407,13 +422,16 @@ class ParameterServer(object):
             peers   (dict)   Dict of best peer
     '''
     def mc_synchronize(self, sess_id, peer):
-        self.cache.set(sess_id, peer)
 
         with self.best_lock:
             best_mc = ast.literal_eval(self.cache.get('best_mc'))
+            best_mc['origin'] = best['alias']
+            best['alias'] = self.me['alias']
+            my_best = sorted(best_mc, key=lambda x: x['score'])[-1]
 
-            if peer['score'] > best_mc['score']:
-                self.cache.set('best_mc', peer)
+            if peer['score_after'] > my_best['score']:
+                best_mc.append(peer)
+                self.cache.set('best_mc', best_mc)
 
 
     '''
@@ -915,7 +933,7 @@ class ParameterServer(object):
     '''
     def establish_session(self, sess_id):
         if self.communication_only:
-            return ast.literal_eval(self.cache.get('best_mc'))
+            return sorted(ast.literal_eval(self.cache.get('best_mc')), key=lambda x: x['score']).pop()
 
         # Setup logging for hyperedge
         log_name = '{}-{}'.format(self.me['id'], sess_id)
