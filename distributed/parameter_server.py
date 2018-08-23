@@ -400,7 +400,7 @@ class ParameterServer(object):
                 # Simulate improving accuracy of best selected model after synchronous training and adding to score
                 # Modify score with different distributions, negatives, etc. for different simulations
                 all_peers = sorted(all_peers, key=lambda x: x['score'], reverse=True)
-                best = dict(all_peers[0])
+                best = dict(all_peers[0]) if random() <= self.epsilon else all_peers[randint(0, len(all_peers)-1)]
                 best['score'] = best['score_after']
                 best['score_after'] = best['score'] + random()
                 best['time'] = hyperedge_time
