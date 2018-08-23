@@ -366,7 +366,9 @@ class ParameterServer(object):
         
         # create log with all information, which will then be collected and parsed by session.py
         if self.communication_only:
-            pass
+            file_dir = os.path.join(self.log_dir, 'mc-{}.json'.format(self.me['id']))
+            with open(file_dir, 'w') as mc_file:
+                mc_file.write(json.dumps([{key: self.cache.get(key)} for key in self.cache.scan_iter("*mc*")]))
 
         self.log.info('hypergraph complete')
 
@@ -1153,8 +1155,6 @@ class ParameterServer(object):
             self.pc.teardown()
             self.log.info('exiting ps')
             [os.kill(pid, signal.SIGTERM) for pid in json.loads(self.cache.get('sock_pids'))]
-            Popen(["fuser", "-n", "tcp", "-k", "9888;", "pkill", "-9", "-f", "python"], stdout=PIPE).communicate()
-            sys.exit(0)
         except Exception as e:
             self.log.error(e)
             return False
