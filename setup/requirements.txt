@@ -17,3 +17,5 @@ ujson==1.35
 tqdm==4.20.0
 psutil==5.4.6
 plotly==3.1.1-py27h28b3542_0
+python-igraph==0.7.1.post6-py27_4
+ipywidgets==7.4.0-py27_0
