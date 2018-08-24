@@ -91,6 +91,7 @@ class ParameterServer(object):
             self.sparsity           = args.sparsity
             self.uniform            = args.uniform
             self.uniform_ex         = self.uniform-1 # number of peers in an edge excluding itself
+            self.use_allreduce      = args.allreduce
             self.variety            = args.variety
 
             self.clear_port()
@@ -295,8 +296,8 @@ class ParameterServer(object):
             return self.share_grad(*args)
         elif api == 'done':
             return self.done(*args)
-        elif api == 'mc_synchronize':
-            return self.mc_synchronize(*args)
+        elif api == 'mc_broadcast':
+            return self.mc_broadcast(*args)
         else:
             self.log.error('api:{}, args:{}'.format(api, args))
             return 'invalid'
@@ -382,6 +383,7 @@ class ParameterServer(object):
         # because establish_session() does not create a session if in communication_only mode
         sess_id = self.get_id('mc')
         peers = [x for x in self.establish_clique({"id": sess_id, "me": self.me}) if len(x) > 0]
+        color = "rgb({},{},{})".format(uniform(0,255), uniform(0,255), uniform(0,255))
 
         if len(peers) > 0:
             with self.best_lock:
@@ -395,7 +397,11 @@ class ParameterServer(object):
                 all_peers = list(peers)
                 all_peers.append(my_best)
                 hyperedge_time = time()-self.ps_start_time
-                self.cache.set(sess_id, {'time': hyperedge_time, 'me': self.me['alias'], 'peers': all_peers})
+                
+                nodes = [{"name": "{}-({}%)".format(peer['alias'], peer['score']), "group": color} for peer in all_peers]
+                links = [{"source": i, "target": (i+1)%len(nodes)} for i in range(len(nodes))]
+                
+                self.cache.set(sess_id, {'time': hyperedge_time, 'me': self.me['alias'], 'edge': {"nodes": nodes, "links": links}})
 
                 # Simulate improving accuracy of best selected model after synchronous training and adding to score
                 # Modify score with different distributions, negatives, etc. for different simulations
@@ -410,10 +416,10 @@ class ParameterServer(object):
     
                 self.cache.set('best_mc', best_mc)
 
-            # Synchronize score with all peers
+            # Broadcast score to all peers
             for i, send_to in enumerate(peers):
                 Thread(target=self.pc.psend, args=(send_to['host'], send_to['port'], 
-                       {"api": "mc_synchronize", "args": [sess_id, best]},)).start()
+                       {"api": "mc_broadcast", "args": [sess_id, best]},)).start()
 
 
     '''
@@ -423,7 +429,7 @@ class ParameterServer(object):
     Input:  sess_id (String) Session ID
             peers   (dict)   Dict of best peer
     '''
-    def mc_synchronize(self, sess_id, peer):
+    def mc_broadcast(self, sess_id, peer):
 
         with self.best_lock:
             best_mc = ast.literal_eval(self.cache.get('best_mc'))
@@ -498,13 +504,15 @@ class ParameterServer(object):
 
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], k=self.sparsity, sparsify=True)
-        self.allreduce(sess_id, sess, multistep, sess['train_size'], log=log)
+        
+        if self.use_allreduce:
+            self.allreduce(sess_id, sess, multistep, sess['train_size'], log=log)
 
-        # Final validation
-        # Retrieve gradients in session shared by peers
-        sess = json.loads(self.cache.get(sess_id))
-        sess['train_size'] += sess['share_train_sizes']
-        nn.add_batched_coordinates(sess['gradients'][0], lr=self.lr, avg=sess['train_size'])
+            # Final validation
+            # Retrieve gradients in session shared by peers
+            sess = json.loads(self.cache.get(sess_id))
+            sess['train_size'] += sess['share_train_sizes']
+            nn.add_batched_coordinates(sess['gradients'][0], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
         # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)

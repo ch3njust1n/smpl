@@ -22,11 +22,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Default host address (default: 0.0.0.0)')
     parser.add_argument('--port', type=int, default=9888, help='Port number for GradientServer (default: 9888)')
+    parser.add_argument('--allreduce', action='store_true', help='Enable allreduce to share gradients during hyperedge training (default: True')
     parser.add_argument('--async_global', type=bool, default=True, help='Set for globally asynchronous training (default: True)')
     parser.add_argument('--async_mid', type=bool, default=True, help='Set for asynchronous training within hyperedges (default: True)')
     parser.add_argument('--async_local', type=bool, default=True, help='Set for asynchronous training on each peer (default: True)')
     parser.add_argument('--batch_size', type=int, default=16, help='Data batch size (default: 16)')
-    parser.add_argument('--communication_only', '-c', type=bool, default=True, help='Run a Monte Carlo simulation on communication \
+    parser.add_argument('--communication_only', '-c', type=bool, default=False, help='Run a Monte Carlo simulation on communication \
                         topology. Training is disabled during simulation. (default: False)')
     parser.add_argument('--cuda', type=str2bool, default=False, help='Enables CUDA training (default: False)')
     parser.add_argument('--data', '-d', type=str, default='mnist', help='Data directory (default: mnist)')
@@ -41,8 +42,7 @@ def main():
     parser.add_argument('--epsilon', '-x', type=percent, default=1.0, help='Chance of selecting a \
                         random set model during parameter synchronization. (default: 1.0)')
     parser.add_argument('--eth', type=str, default='ens3', help='Peers\' ethernet interface (default: ens3)')
-    parser.add_argument('--flush', '-f', type=str2bool, default=True, help='Clear all parameters from previous \
-                        sessions')
+    parser.add_argument('--flush', '-f', type=str2bool, default=True, help='Clear all parameters from previous sessions')
     parser.add_argument('--hyperepochs', '-e', type=int, default=2, help='Total number of hyperepochs \
                         across all cliques for this peer (default: 1)')
     parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
