@@ -132,6 +132,7 @@ class ParameterServer(object):
                 me['score_after'] = me['score']
                 me['time'] = 0
                 me['origin'] = me['alias']
+                me['color'] = "rgb({},{},{})".format(randint(0,256), randint(0,256), randint(0,256))
                 self.cache.set('best_mc', [me])
 
             self.cache.set('server', json.dumps({"clique": self.uniform_ex, "host": self.host, "port": self.port}))
@@ -156,9 +157,21 @@ class ParameterServer(object):
             self.pc.setup()
 
             # Init training
-            for i in range(self.trials):
+            if self.communication_only:
+                for i in range(self.trials):
+                    start = time()
+                    self.mc_experiment = i
+                    self.async_train()
+                    self.log.info('experiment: {}, time: {} (seconds)'.format(i, time()-start))
+
+                # create log with all information, which will then be collected and parsed by session.py
+                file_dir = os.path.join(self.log_dir, 'mc-{}.json'.format(self.me['id']))
+                with open(file_dir, 'w') as mc_file:
+                    mc_file.write(json.dumps([{key: self.cache.get(key)} for key in self.cache.scan_iter("*mc*")]))
+            else:
                 self.async_train()
-                self.log.info('total time: {} (seconds)'.format(time()-self.ps_start_time))
+            
+            self.log.info('total time: {} (seconds)'.format(time()-self.ps_start_time))
 
             # Disconnect from hypergraph
             self.shutdown()
@@ -366,12 +379,6 @@ class ParameterServer(object):
 
                     if len(peers) == done_count or (self.communication_only and len(procs) == 0):
                         break
-        
-        # create log with all information, which will then be collected and parsed by session.py
-        if self.communication_only:
-            file_dir = os.path.join(self.log_dir, 'mc-{}.json'.format(self.me['id']))
-            with open(file_dir, 'w') as mc_file:
-                mc_file.write(json.dumps([{key: self.cache.get(key)} for key in self.cache.scan_iter("*mc*")]))
 
         self.log.info('hypergraph complete')
 
@@ -385,7 +392,6 @@ class ParameterServer(object):
         # because establish_session() does not create a session if in communication_only mode
         sess_id = self.get_id('mc')
         peers = [x for x in self.establish_clique({"id": sess_id, "me": self.me}) if len(x) > 0]
-        color = "rgb({},{},{})".format(uniform(0,255), uniform(0,255), uniform(0,255))
 
         if len(peers) > 0:
             with self.best_lock:
@@ -399,11 +405,6 @@ class ParameterServer(object):
                 all_peers = list(peers)
                 all_peers.append(my_best)
                 hyperedge_time = time()-self.ps_start_time
-                
-                nodes = [{"name": "{}-({}%)".format(peer['alias'], peer['score']), "group": color} for peer in all_peers]
-                links = [{"source": i, "target": (i+1)%len(nodes)} for i in range(len(nodes))]
-                
-                self.cache.set(sess_id, {'time': hyperedge_time, 'me': self.me['alias'], 'edge': {"nodes": nodes, "links": links}})
 
                 # Simulate improving accuracy of best selected model after synchronous training and adding to score
                 # Modify score with different distributions, negatives, etc. for different simulations
@@ -412,6 +413,12 @@ class ParameterServer(object):
                 best['score'] = best['score_after']
                 best['score_after'] = best['score'] + random()
                 best['time'] = hyperedge_time
+
+                nodes = [{"name": "{} ({}%)".format(peer['alias'], peer['score']), "group": best['color']} for peer in all_peers]
+                links = [{"source": i, "target": (i+1)%len(nodes)} for i in range(len(nodes))]
+                
+                self.cache.set(sess_id, {'experiment':self.mc_experiment, 'time': hyperedge_time, 
+                                         'me': self.me['alias'], 'edge': {"nodes": nodes, "links": links}})
 
                 if best['score_after'] > my_best['score']:
                     best_mc.append(best)
