@@ -59,6 +59,7 @@ def main():
     parser.add_argument('--seed', type=int, default=randint(0,100), help='Random seed for dev only!')
     parser.add_argument('--shuffle', type=bool, default=True, help='True if data should be shuffled (default: True)')
     parser.add_argument('--sparsity', type=percent, default=1.0, help='Percentage of gradients to keep (default: 1.0)')
+    parser.add_argument('--trials', '-t', type=int, default=1, help='Number of Monte Carlo simulation trials (default: 1)')
     parser.add_argument('--uniform', '-u', type=edge_size, default=2, help='Hyperedge size (default: 2)')
     parser.add_argument('--variety', type=int, default=1, 
                         help='Minimum number of new members required in order to enter into a new hyperedge. \

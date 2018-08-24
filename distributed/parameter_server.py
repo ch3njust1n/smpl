@@ -92,6 +92,7 @@ class ParameterServer(object):
             self.uniform            = args.uniform
             self.uniform_ex         = self.uniform-1 # number of peers in an edge excluding itself
             self.use_allreduce      = args.allreduce
+            self.trials             = args.trials
             self.variety            = args.variety
 
             self.clear_port()
@@ -155,8 +156,9 @@ class ParameterServer(object):
             self.pc.setup()
 
             # Init training
-            self.async_train()
-            self.log.info('total time: {} (seconds)'.format(time()-self.ps_start_time))
+            for i in range(self.trials):
+                self.async_train()
+                self.log.info('total time: {} (seconds)'.format(time()-self.ps_start_time))
 
             # Disconnect from hypergraph
             self.shutdown()
