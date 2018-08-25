@@ -14,7 +14,6 @@ from .. import parameter_tools as pt
 from torch import FloatTensor, LongTensor, zeros, stack, sparse, Size, manual_seed
 from torch.autograd import Variable
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
 from torch.multiprocessing import Process, cpu_count
 import logging, os
@@ -24,7 +23,6 @@ from time import time
 class Network(nn.Module):
     def __init__(self, seed=0, log=None):
         super(Network, self).__init__()
-        self.optimizer = optim.SGD
         self.loss = F.nll_loss
         self.log = log
 

@@ -31,15 +31,6 @@ class Train(DevTrainer):
     def __init__(self, config):
         super(Train, self).__init__(*config)
 
-        # Training settings
-        self.batch_size = 8
-        self.epochs = 1
-        self.log_interval = 500
-        self.lr = 1e-3
-        self.momentum = 0.9
-        self.optimizer = self.network.optimizer(self.network.parameters(), lr=self.lr)
-        self.save = 'model/save'
-
 
     '''
     Implements one hyperedge training session

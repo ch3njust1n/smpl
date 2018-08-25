@@ -5,6 +5,7 @@
 	Module for abstracting trainer classes
 '''
 
+import torch.optim as optim
 from torchvision import transforms
 from torch.autograd import Variable
 import torchvision.datasets as datasets
@@ -16,7 +17,8 @@ import os, logging, json, psutil
 
 
 class Trainer(object):
-    def __init__(self, network, dataset, device, batch_size=1, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
+    def __init__(self, dataset, device, epochs, lr, network, optimizer, batch_size=1, cuda=False, drop_last=False, log=None,
+                 log_freq=100, seed=-1, shuffle=True):
         super(Trainer, self).__init__()
         self.batch_size        = batch_size
         self.cuda              = cuda
@@ -24,10 +26,10 @@ class Trainer(object):
         self.device            = device
         self.drop_last         = drop_last
         self.ep_losses         = []
-        self.epochs            = 1
-        self.log_interval      = 1
+        self.epochs            = epochs
+        self.log_interval      = log_freq
         self.log               = log
-        self.lr                = 1e-3
+        self.lr                = lr
         self.network           = network.to(self.device)
         self.num_train_batches = 0
         self.num_val_batches   = 0
@@ -40,6 +42,26 @@ class Trainer(object):
         self.val_path          = os.path.join(dataset.name, 'val')
         self.val_size          = 0
         self.validations       = []
+
+        opt = optimizer['optimizer'].lower()
+        opt_params = optimizer['parameters']
+        if opt == 'sgd':
+            self.optimizer = optim.SGD(self.network.parameters(), lr=self.lr, momentum=opt_params['momentum'],
+                                       dampening=opt_params['dampening'], weight_decay=opt_params['weight_decay'], 
+                                       nesterov=opt_params['nesterov'])
+        elif opt == 'adadelta':
+            self.optimizer = optim.Adadelta(self.network.parameters(), lr=self.lr)
+        elif opt == 'adagrad':
+            self.optimizer = optim.Adagrad(self.network.parameters(), lr=self.lr)
+        elif opt == 'adam':
+            self.optimizer = optim.Adam(self.network.parameters(), lr=self.lr)
+        elif opt == 'adamax':
+            self.optimizer = optim.Adamax(self.network.parameters(), lr=self.lr)
+        elif opt == 'rmsprop':
+            self.optimizer = optim.RMSprop(self.network.parameters(), lr=self.lr)
+        elif opt == 'rprop':
+            self.optimizer = optim.Rprop(self.network.parameters(), lr=self.lr)
+
 
 
     '''
@@ -100,9 +122,11 @@ class Trainer(object):
 
 
 class DistributedTrainer(Trainer):
-    def __init__(self, sess_id, cache, network, dataset, device, batch_size, cuda=False, drop_last=False, shuffle=True, seed=-1, log=None):
-        super(DistributedTrainer, self).__init__(network, dataset, device, batch_size=batch_size, cuda=cuda, 
-                                                 drop_last=drop_last, shuffle=shuffle, seed=seed, log=log)
+    def __init__(self, batch_size, cache, dataset, device, epochs, log, lr, network, optimizer, sess_id, cuda=False, 
+                 drop_last=False, log_freq=100, save='model/save', seed=-1, shuffle=True):
+        super(DistributedTrainer, self).__init__(dataset, device, epochs, lr, network, optimizer, batch_size=batch_size, cuda=cuda, 
+                                                 drop_last=drop_last, log=log, log_freq=log_freq, seed=seed, 
+                                                 shuffle=shuffle)
 
         self.pid     = current_process().pid
         self.sess_id = sess_id
@@ -127,9 +151,10 @@ class DistributedTrainer(Trainer):
 Trainer for development only. Loads MNIST dataset on every worker.
 '''
 class DevTrainer(DistributedTrainer):
-    def __init__(self, log, sess_id, cache, network, dataset, device, batch_size=1, cuda=False, drop_last=False, 
-                 shuffle=True, seed=-1):
-        super(DevTrainer, self).__init__(sess_id, cache, network, dataset, device, batch_size, cuda, drop_last, shuffle, seed, log)
+    def __init__(self, batch_size, cache, dataset, device, epochs, log, lr, network, optimizer, sess_id, cuda=False, 
+                 drop_last=False, log_freq=100, save='model/save', seed=-1, shuffle=True):
+        super(DevTrainer, self).__init__(batch_size, cache, dataset, device, epochs, log, lr, network, optimizer,
+                                         sess_id, cuda, drop_last, log_freq, save, seed, shuffle)
         self.total_val         = 0
         self.total_train       = 0
         self.train_loader      = dataset.train_loader

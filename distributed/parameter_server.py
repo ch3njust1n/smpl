@@ -28,17 +28,20 @@ class ParameterServer(object):
     def __init__(self, args, mode):
         # General parameters
         self.ps_start_time = time()
-        self.batch_size = args.batch_size
-        self.cuda       = args.cuda
-        self.data       = args.data
-        self.device     = torch.device("cuda" if self.cuda else "cpu")
-        self.drop_last  = args.drop_last
-        self.eth        = args.eth
-        self.log_level  = args.log_level
-        self.party      = args.party
-        self.seed       = args.seed
-        self.shuffle    = args.shuffle
-        self.workers    = cpu_count()
+        self.batch_size   = args.batch_size
+        self.cuda         = args.cuda
+        self.data         = args.data
+        self.device       = torch.device("cuda" if self.cuda else "cpu")
+        self.drop_last    = args.drop_last
+        self.eth          = args.eth
+        self.local_epochs = args.local_epochs
+        self.log_freq     = args.log_freq
+        self.log_level    = args.log_level
+        self.optimizer    = args.optimizer
+        self.party        = args.party
+        self.seed         = args.seed
+        self.shuffle      = args.shuffle
+        self.workers      = cpu_count()
 
         # Load party config
         self.peers = utils.load_json(os.path.join(os.getcwd(), 'distributed/config/', self.party))
@@ -74,7 +77,6 @@ class ParameterServer(object):
             self.host               = args.host
             self.port               = args.port
             self.workers            = (cpu_count()-args.regular)/(args.regular)
-
             self.async_global       = args.async_global
             self.async_mid          = args.async_mid
             self.async_local        = args.async_local
@@ -496,6 +498,8 @@ class ParameterServer(object):
             log, log_path = utils.log(self.me['alias'], self.log_dir, 'train-{}'.format(sess_id))
 
         log.info('training...')
+        optimizer = {'optimizer': self.optimizer, 
+                     'parameters': {'momentum': 0, 'weight_decay': 0, 'dampening': 0, 'nesterov': False}}
 
         # Setup variables for sharing gradients
         sess = json.loads(self.cache.get(sess_id))
@@ -503,7 +507,8 @@ class ParameterServer(object):
         # Each session should create its own model
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(sess['parameters'])
-        conf = (log, sess_id, self.cache, nn, self.dataset, self.device, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
+        conf = (self.batch_size, self.cache, self.dataset, self.device, self.local_epochs, log, self.lr, nn, 
+                optimizer, sess_id, self.cuda, self.drop_last, self.log_freq, self.save, self.seed, self.shuffle)
 
         self.local_train(sess_id, nn, conf, async=self.async_local, log=log)
 
@@ -524,7 +529,6 @@ class ParameterServer(object):
             nn.add_batched_coordinates(sess['gradients'][0], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
-        # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         sess["accuracy"] = Train(conf).validate()
         sess["done"] = True
         self.cache.set(sess_id, json.dumps(sess))
@@ -547,11 +551,7 @@ class ParameterServer(object):
     Output: share   (dict)             Dictionary containing accuracy, validation size, and training size
     '''
     def local_train(self, sess_id, nn, conf, async=False, log=None):
-        # DistributedTrainer constructor parameters
-        # network, sess_id, data, batch_size, cuda, drop_last, shuffle, seed
-        # conf = (log, sess_id, self.cache, nn, self.dataset, self.batch_size, self.cuda, self.drop_last, self.shuffle, self.seed)
         processes = []
-
         start_time = time()
 
         p = hash(str(nn.get_parameters(tolist=True)))

@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--async_mid', type=bool, default=True, help='Set for asynchronous training within hyperedges (default: True)')
     parser.add_argument('--async_local', type=bool, default=True, help='Set for asynchronous training on each peer (default: True)')
     parser.add_argument('--batch_size', type=int, default=16, help='Data batch size (default: 16)')
-    parser.add_argument('--communication_only', '-c', type=bool, default=True, help='Run a Monte Carlo simulation on communication \
+    parser.add_argument('--communication_only', '-c', type=bool, default=False, help='Run a Monte Carlo simulation on communication \
                         topology. Training is disabled during simulation. (default: False)')
     parser.add_argument('--cuda', type=str2bool, default=False, help='Enables CUDA training (default: False)')
     parser.add_argument('--data', '-d', type=str, default='mnist', help='Data directory (default: mnist)')
@@ -45,12 +45,14 @@ def main():
     parser.add_argument('--flush', '-f', type=str2bool, default=True, help='Clear all parameters from previous sessions')
     parser.add_argument('--hyperepochs', '-e', type=int, default=2, help='Total number of hyperepochs \
                         across all cliques for this peer (default: 1)')
+    parser.add_argument('--local_epochs', '-le', type=int, default=1, help='Number of local epochs to train (default: 1)')
     parser.add_argument('--local_parallel', '-l', type=local_parallel, default='hogwild!', 
                         help='Hogwild!, Divergent Exploration, or SGD (default: Hogwild!)')
     parser.add_argument('--learning_rate', '-lr', type=float, default=1e-3, help='Learning rate (default: 1e-3)')
-    parser.add_argument('--log_freq', type=int, default=100, help='Frequency for logging training (default: 100)')
+    parser.add_argument('--log_freq', type=int, default=500, help='Frequency for logging training (default: 500)')
     parser.add_argument('--log_level', type=int, default=logging.DEBUG, help='Logging level. Set to 100 to supress all logs.')
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment (default: MNIST)')
+    parser.add_argument('--optimizer', '-o', type=check_opt, default='sgd', help='Name of gradient-based optimizer (default: sgd)')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file. (default: party.json)')
     parser.add_argument('--regular', '-r', default=2, help='Maximum number of simultaneous hyperedges at \
                         any given time (default: 2)')
@@ -59,7 +61,7 @@ def main():
     parser.add_argument('--seed', type=int, default=randint(0,100), help='Random seed for dev only!')
     parser.add_argument('--shuffle', type=bool, default=True, help='True if data should be shuffled (default: True)')
     parser.add_argument('--sparsity', type=percent, default=1.0, help='Percentage of gradients to keep (default: 1.0)')
-    parser.add_argument('--trials', '-t', type=int, default=10, help='Number of experiments to run (default: 1)')
+    parser.add_argument('--trials', '-t', type=int, default=1, help='Number of experiments to run (default: 1)')
     parser.add_argument('--uniform', '-u', type=edge_size, default=2, help='Hyperedge size (default: 2)')
     parser.add_argument('--variety', type=int, default=1, 
                         help='Minimum number of new members required in order to enter into a new hyperedge. \
@@ -80,7 +82,14 @@ def main():
         pass
 
 
+'''
+Convert bool string arguement to bool
+
+Input:  s (String) String indicating bool
+Output: Bool
+'''
 def str2bool(s):
+
     if s.lower() in ('y', 'yes', 't', 'true', '1'):
         return True
     elif s.lower() in ('n', 'no', 'f', 'false', '0'):
@@ -89,6 +98,12 @@ def str2bool(s):
         raise argparse.ArgumentTypeError('Error: Boolean value expected: {}'.format(s))
 
 
+'''
+Check if argument value is a valid percent
+
+Input:  value (float) Floating point value
+Output: Returns given value if valid
+'''
 def percent(value):
 
     if value < 0 or value > 100:
@@ -97,6 +112,12 @@ def percent(value):
     return value
 
 
+'''
+Checks hyperedge size arguement
+
+Input:  size (int) Size of hyperedge
+Output: Returns given value if valid
+'''
 def edge_size(size):
 
     if type(size) != int:
@@ -108,8 +129,32 @@ def edge_size(size):
     return size
 
 
+'''
+Check optimizer arguement
+
+Input:  optimizer (String) Name of gradient-based optimizer to use
+Output: Lowercase name of optimizer if valid
+'''
+def check_opt(optimizer):
+
+    opt = optimizer.lower()
+    
+    if opt not in ('sgd', 'adadelta', 'adagrad', 'adam', 'adamax', 'rmsprop', 'rprop'):
+        raise argparse.ArgumentTypeError('Error: Unsupported gradient-based optimizer: {}'.format(optimizer))
+
+    return opt
+
+
+'''
+Check local_parallel arguement
+
+Input:  strategy (String) Name of local parallel training strategy
+Output: String of training strategy if valid
+'''
 def local_parallel(strategy):
+
     s = strategy.lower()
+
     if s in ('hogwild', 'hogwild!'):
         return 'hogwild'
     elif s in ('dex', 'divex', 'divergent', 'divergentex'):
@@ -119,8 +164,14 @@ def local_parallel(strategy):
     else:
         raise argparse.ArgumentTypeError('Error: Unsupported local parallelization technique: {}'.format(s))
 
+'''
+Check stratgy arguement
 
+Input:  strategy (String) Parameter synchronization strategy
+Output: String of parameter synchronization strategy if valid
+'''
 def strategy(strategy):
+
     s = strategy.lower()
     if s in ('random', 'rand', 'r'):
         return 'random'
