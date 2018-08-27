@@ -55,7 +55,7 @@ class ParameterServer(object):
         self.log_dir = os.path.join(os.getcwd(), 'logs')
         # Clear previous logs
         for file in os.listdir(self.log_dir):
-            if file.endswith('.log'): os.remove(os.path.join(self.log_dir, file))
+            if file.endswith('.log') or file.endswith('.json'): os.remove(os.path.join(self.log_dir, file))
 
         self.log, self.log_path = utils.log(self.me['alias'], self.log_dir, 'ps{}'.format(self.me['id']), level=self.log_level)
         self.cache              = redis.StrictRedis(host='localhost', port=6379, db=0)
@@ -131,9 +131,7 @@ class ParameterServer(object):
                 # random score instead of validation accuracy for communication test
                 me = dict(self.me)
                 me['score'] = random()
-                me['score_after'] = me['score']
                 me['time'] = 0
-                me['origin'] = me['alias']
                 me['color'] = "rgb({},{},{})".format(randint(0,256), randint(0,256), randint(0,256))
                 self.cache.set('best_mc', [me])
 
@@ -169,7 +167,7 @@ class ParameterServer(object):
                 # create log with all information, which will then be collected and parsed by session.py
                 file_dir = os.path.join(self.log_dir, 'mc-{}.json'.format(self.me['id']))
                 with open(file_dir, 'w') as mc_file:
-                    mc_file.write(json.dumps([{key: self.cache.get(key)} for key in self.cache.scan_iter("*mc*")]))
+                    mc_file.write(json.dumps([{key: self.cache.get(key)} for key in self.cache.scan_iter("mc*")]))
             else:
                 self.async_train()
             
@@ -393,6 +391,7 @@ class ParameterServer(object):
         # only need peers and don't need to call self.kill_session()
         # because establish_session() does not create a session if in communication_only mode
         sess_id = self.get_id('mc')
+        start_time = time()
         peers = [x for x in self.establish_clique({"id": sess_id, "me": self.me}) if len(x) > 0]
 
         if len(peers) > 0:
@@ -400,32 +399,31 @@ class ParameterServer(object):
                 # Get your list of best models
                 best_mc = ast.literal_eval(self.cache.get('best_mc'))
                 my_best = best_mc[-1]
-                my_best['origin'] = my_best['alias']
-                my_best['alias'] = self.me['alias']
 
                 # Record starting state of hyperedge
                 all_peers = list(peers)
                 all_peers.append(my_best)
-                hyperedge_time = time()-self.ps_start_time
 
                 # Simulate improving accuracy of best selected model after synchronous training and adding to score
                 # Modify score with different distributions, negatives, etc. for different simulations
                 all_peers = sorted(all_peers, key=lambda x: x['score'], reverse=True)
                 best = dict(all_peers[0]) if random() <= self.epsilon else all_peers[randint(0, len(all_peers)-1)]
-                best['score'] = best['score_after']
-                best['score_after'] = best['score'] + random()
-                best['time'] = hyperedge_time
+                best['score'] += random()
 
-                nodes = [{"name": "{} ({}%)".format(peer['alias'], peer['score']), "group": best['color']} for peer in all_peers]
+                nodes = [{"name": peer['alias'], "score": peer['score'], "group": peer['color']} for peer in all_peers]
                 links = [{"source": i, "target": (i+1)%len(nodes)} for i in range(len(nodes))]
-                
-                self.cache.set(sess_id, {'experiment':self.mc_experiment, 'time': hyperedge_time, 
-                                         'me': self.me['alias'], 'edge': {"nodes": nodes, "links": links}})
 
-                if best['score_after'] > my_best['score']:
+                end_time = time()
+                best['start_time'] = start_time
+                best['end_time'] = end_time
+
+                if best['score'] > my_best['score']:
+                    best['alias'] = self.me['alias']
                     best_mc.append(best)
     
                 self.cache.set('best_mc', best_mc)
+                self.cache.set(sess_id, {'experiment':self.mc_experiment, 'start_time': start_time, 'end_time': end_time, 
+                                         'me': self.me['alias'], 'edge': {"nodes": nodes, "links": links}})
 
             # Broadcast score to all peers
             for i, send_to in enumerate(peers):
@@ -444,11 +442,10 @@ class ParameterServer(object):
 
         with self.best_lock:
             best_mc = ast.literal_eval(self.cache.get('best_mc'))
-            best_mc['origin'] = best['alias']
-            best['alias'] = self.me['alias']
             my_best = sorted(best_mc, key=lambda x: x['score'])[-1]
 
             if peer['score_after'] > my_best['score']:
+                peer['alias'] = self.me['alias']
                 best_mc.append(peer)
                 self.cache.set('best_mc', best_mc)
 
@@ -475,10 +472,12 @@ class ParameterServer(object):
         # Save log file path
         sess = json.loads(self.cache.get(sess_id))
         sess["log"] = log_path
+        sess["start_time"] = start
+        sess["end_time"] = time()
         self.cache.set(sess_id, json.dumps(sess))
 
         self.train(sess_id, log)
-        log.info('hyperedge time: {} (seconds)'.format(time()-start))
+        log.info('hyperedge time: {} (seconds)'.format(sess["end_time"]-start))
 
 
     '''

@@ -210,8 +210,8 @@ class ToolBox(object):
 		for f in os.listdir(log_dir):
 			if f.startswith('mc') and f.endswith('json'):
 				with open(os.path.join(log_dir, f), 'r') as mc_data:
-					data.extend(ujson.load(mc_data))
-
+					data.extend([sess[sess.keys()[0]] for sess in ujson.load(mc_data)])
+					
 		pprint(data)
 
 

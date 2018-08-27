@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--async_mid', type=bool, default=True, help='Set for asynchronous training within hyperedges (default: True)')
     parser.add_argument('--async_local', type=bool, default=True, help='Set for asynchronous training on each peer (default: True)')
     parser.add_argument('--batch_size', type=int, default=16, help='Data batch size (default: 16)')
-    parser.add_argument('--communication_only', '-c', type=bool, default=False, help='Run a Monte Carlo simulation on communication \
+    parser.add_argument('--communication_only', '-c', type=bool, default=True, help='Run a Monte Carlo simulation on communication \
                         topology. Training is disabled during simulation. (default: False)')
     parser.add_argument('--cuda', type=str2bool, default=False, help='Enables CUDA training (default: False)')
     parser.add_argument('--data', '-d', type=str, default='mnist', help='Data directory (default: mnist)')
@@ -54,7 +54,7 @@ def main():
     parser.add_argument('--name', '-n', type=str, default='MNIST', help='Name of experiment (default: MNIST)')
     parser.add_argument('--optimizer', '-o', type=check_opt, default='sgd', help='Name of gradient-based optimizer (default: sgd)')
     parser.add_argument('--party', '-p', type=str, default='party.json', help='Name of party configuration file. (default: party.json)')
-    parser.add_argument('--regular', '-r', default=2, help='Maximum number of simultaneous hyperedges at \
+    parser.add_argument('--regular', '-r', default=4, help='Maximum number of simultaneous hyperedges at \
                         any given time (default: 2)')
     parser.add_argument('--save', '-s', type=str, default='model/save', 
                         help='Directory to save trained model parameters to')
