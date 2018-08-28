@@ -423,7 +423,7 @@ class ParameterServer(object):
     
                 self.cache.set('best_mc', best_mc)
                 self.cache.set(sess_id, {'experiment':self.mc_experiment, 'start_time': start_time, 'end_time': end_time, 
-                                         'me': self.me['alias'], 'edge': {"nodes": nodes, "links": links}})
+                                         'me': self.me['alias'], 'color': best_mc['color'], 'edge': {"nodes": nodes, "links": links}})
 
             # Broadcast score to all peers
             for i, send_to in enumerate(peers):
