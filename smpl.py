@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--async_mid', type=bool, default=True, help='Set for asynchronous training within hyperedges (default: True)')
     parser.add_argument('--async_local', type=bool, default=True, help='Set for asynchronous training on each peer (default: True)')
     parser.add_argument('--batch_size', type=int, default=16, help='Data batch size (default: 16)')
-    parser.add_argument('--communication_only', '-c', type=bool, default=True, help='Run a Monte Carlo simulation on communication \
+    parser.add_argument('--communication_only', '-c', type=bool, default=False, help='Run a Monte Carlo simulation on communication \
                         topology. Training is disabled during simulation. (default: False)')
     parser.add_argument('--cuda', type=str2bool, default=False, help='Enables CUDA training (default: False)')
     parser.add_argument('--data', '-d', type=str, default='mnist', help='Data directory (default: mnist)')
@@ -62,7 +62,7 @@ def main():
     parser.add_argument('--shuffle', type=bool, default=True, help='True if data should be shuffled (default: True)')
     parser.add_argument('--sparsity', type=percent, default=1.0, help='Percentage of gradients to keep (default: 1.0)')
     parser.add_argument('--trials', '-t', type=int, default=1, help='Number of experiments to run (default: 1)')
-    parser.add_argument('--uniform', '-u', type=edge_size, default=2, help='Hyperedge size (default: 2)')
+    parser.add_argument('--uniform', '-u', type=edge_size, default=3, help='Hyperedge size (default: 2)')
     parser.add_argument('--variety', type=int, default=1, 
                         help='Minimum number of new members required in order to enter into a new hyperedge. \
                         Prevents perfectly overlapping with current sessions. (default: 1)')

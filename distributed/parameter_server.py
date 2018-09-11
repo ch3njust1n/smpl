@@ -423,7 +423,7 @@ class ParameterServer(object):
     
                 self.cache.set('best_mc', best_mc)
                 self.cache.set(sess_id, {'experiment':self.mc_experiment, 'start_time': start_time, 'end_time': end_time, 
-                                         'me': self.me['alias'], 'color': best_mc['color'], 'edge': {"nodes": nodes, "links": links}})
+                                         'me': self.me['alias'], 'color': best['color'], 'edge': {"nodes": nodes, "links": links}})
 
             # Broadcast score to all peers
             for i, send_to in enumerate(peers):
@@ -528,8 +528,8 @@ class ParameterServer(object):
             nn.add_batched_coordinates(sess['gradients'][0], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
-        sess["accuracy"] = Train(conf).validate()
-        sess["done"] = True
+        sess['accuracy'] = Train(conf).validate()
+        sess['done'] = True
         self.cache.set(sess_id, json.dumps(sess))
 
         # compare recently trained hyperedge model with current best
@@ -627,6 +627,29 @@ class ParameterServer(object):
             self.kill_session(sess_id, peers)
             return ''
 
+        # Each peer performs local training before hypergraph training to evaluate their current position in parameter space
+        # and to get an initial score
+        # Refactor this code and fix
+        # ==============================
+        optimizer = {'optimizer': self.optimizer, 
+                     'parameters': {'momentum': 0, 'weight_decay': 0, 'dampening': 0, 'nesterov': False}}
+        
+        nn = net.DevNet(seed=self.seed, log=log)
+        local_sess = json.loads(self.cache.get('best'))
+        local_sess['done'] = False
+        nn.update_parameters(local_sess["parameters"])
+        self.cache.set(sess_id, json.dumps(local_sess))
+
+        conf = (self.batch_size, self.cache, self.dataset, self.device, self.local_epochs, log, self.lr, nn, 
+                optimizer, sess_id, self.cuda, self.drop_last, self.log_freq, self.save, self.seed, self.shuffle)
+        self.local_train(sess_id, nn, conf, async=self.async_local, log=log)
+
+        local_sess = json.loads(self.cache.get(sess_id))
+        local_sess["accuracy"] = Train(conf).validate()
+
+        self.update_best(sess_id, log=log)
+        # ==============================
+
         # sort by accuracy in descending order and cache as current session
         # implement parameter synchronization strategies here
         # Note: Selecting based on best validation accuracy will lead to hyperedge collapse
@@ -638,8 +661,8 @@ class ParameterServer(object):
 
         with self.best_lock:
             model = json.loads(self.cache.get('best'))
-            parameters = model["parameters"]
-            accuracy = model["accuracy"]
+            parameters = model['parameters']
+            accuracy = model['accuracy']
 
         my_best = dict(self.me)
         my_best['accuracy'] = accuracy
