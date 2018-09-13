@@ -19,8 +19,8 @@ copy_reg.pickle(socket.socket, reduce_socket, rebuild_socket)
 # Channel for sending to and receiving gradients from MPC server
 class ParameterChannel(object):
 
-    def __init__(self, peers, logger=None):
-        self.log = logger
+    def __init__(self, peers, log=None):
+        self.log = log
         self.peers = peers if type(peers) == list else [peers]
         self.connections = Manager().dict()
         self.status = 1
@@ -73,6 +73,7 @@ class ParameterChannel(object):
                 https://docs.python.org/2/library/errno.html#module-errno
                 '''
                 if err == socket.errno.ENETDOWN or err == socket.errno.ENETUNREACH or err == socket.errno.ECONNABORTED or err == socket.errno.EHOSTUNREACH:
+                    self.log.debug('PC socket error')
                     break
 
             except KeyError as key_err:

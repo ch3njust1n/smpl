@@ -17,9 +17,10 @@ import os, logging, json, psutil
 
 
 class Trainer(object):
-    def __init__(self, dataset, device, epochs, lr, network, optimizer, batch_size=1, cuda=False, drop_last=False, log=None,
+    def __init__(self, dataset, device, epochs, network, optimizer, batch_size=1, cuda=False, drop_last=False, log=None,
                  log_freq=100, seed=-1, shuffle=True):
         super(Trainer, self).__init__()
+
         self.batch_size        = batch_size
         self.cuda              = cuda
         self.dataset           = dataset
@@ -29,7 +30,6 @@ class Trainer(object):
         self.epochs            = epochs
         self.log_interval      = log_freq
         self.log               = log
-        self.lr                = lr
         self.network           = network.to(self.device)
         self.num_train_batches = 0
         self.num_val_batches   = 0
@@ -43,12 +43,13 @@ class Trainer(object):
         self.val_size          = 0
         self.validations       = []
 
-        opt = optimizer['optimizer'].lower()
-        opt_params = optimizer['parameters']
+        opt = optimizer['name'].lower()
+        self.lr = optimizer['lr']
+        
         if opt == 'sgd':
-            self.optimizer = optim.SGD(self.network.parameters(), lr=self.lr, momentum=opt_params['momentum'],
-                                       dampening=opt_params['dampening'], weight_decay=opt_params['weight_decay'], 
-                                       nesterov=opt_params['nesterov'])
+            self.optimizer = optim.SGD(self.network.parameters(), lr=self.lr, momentum=optimizer['momentum'],
+                                       dampening=optimizer['dampening'], weight_decay=optimizer['weight_decay'], 
+                                       nesterov=optimizer['nesterov'])
         elif opt == 'adadelta':
             self.optimizer = optim.Adadelta(self.network.parameters(), lr=self.lr)
         elif opt == 'adagrad':
@@ -122,15 +123,16 @@ class Trainer(object):
 
 
 class DistributedTrainer(Trainer):
-    def __init__(self, batch_size, cache, dataset, device, epochs, log, lr, network, optimizer, sess_id, cuda=False, 
-                 drop_last=False, log_freq=100, save='model/save', seed=-1, shuffle=True):
-        super(DistributedTrainer, self).__init__(dataset, device, epochs, lr, network, optimizer, batch_size=batch_size, cuda=cuda, 
-                                                 drop_last=drop_last, log=log, log_freq=log_freq, seed=seed, 
-                                                 shuffle=shuffle)
-
+    def __init__(self, cache, dataset, device, log, network, sess_id):
         self.pid     = current_process().pid
         self.sess_id = sess_id
         self.cache   = cache
+        sess = json.loads(self.cache.get(sess_id))
+        hp = sess['hyperparameters']
+        
+        super(DistributedTrainer, self).__init__(dataset, device, hp['local_epochs'], network, hp['optimizer'], 
+                                                 hp['batch_size'], hp['cuda'], hp['drop_last'], log, 
+                                                 hp['log_freq'], hp['seed'], hp['shuffle'])
 
 
     '''
@@ -151,10 +153,9 @@ class DistributedTrainer(Trainer):
 Trainer for development only. Loads MNIST dataset on every worker.
 '''
 class DevTrainer(DistributedTrainer):
-    def __init__(self, batch_size, cache, dataset, device, epochs, log, lr, network, optimizer, sess_id, cuda=False, 
-                 drop_last=False, log_freq=100, save='model/save', seed=-1, shuffle=True):
-        super(DevTrainer, self).__init__(batch_size, cache, dataset, device, epochs, log, lr, network, optimizer,
-                                         sess_id, cuda, drop_last, log_freq, save, seed, shuffle)
+    def __init__(self, cache, dataset, device, log, network, sess_id):
+        super(DevTrainer, self).__init__(cache, dataset, device, log, network, sess_id)
+
         self.total_val         = 0
         self.total_train       = 0
         self.train_loader      = dataset.train_loader

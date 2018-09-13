@@ -39,6 +39,7 @@ class ParameterServer(object):
         self.log_level    = args.log_level
         self.optimizer    = args.optimizer
         self.party        = args.party
+        self.save         = args.save
         self.seed         = args.seed
         self.shuffle      = args.shuffle
         self.workers      = cpu_count()
@@ -89,7 +90,6 @@ class ParameterServer(object):
             self.name               = args.name
             self.parallel           = args.local_parallel
             self.regular            = args.regular
-            self.save               = args.save
             self.sparsity           = args.sparsity
             self.uniform            = args.uniform
             self.uniform_ex         = self.uniform-1 # number of peers in an edge excluding itself
@@ -145,7 +145,7 @@ class ParameterServer(object):
 
             # Setup TCP connections to all peers
             self.tcp_conn = {}
-            self.pc = ParameterChannel(self.peers, logger=self.log)
+            self.pc = ParameterChannel(self.peers, log=self.log)
 
             # Establish ports for receiving API calls
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -308,7 +308,9 @@ class ParameterServer(object):
         elif api == 'get_parameters':
             return self.get_parameters(*args)
         elif api == 'share_grad':
-            return self.share_grad(*args)
+            rtn = self.share_grad(*args)
+            self.log.debug('returnig from share_grad()')
+            return rtn
         elif api == 'done':
             return self.done(*args)
         elif api == 'mc_broadcast':
@@ -452,12 +454,30 @@ class ParameterServer(object):
 
     '''
     Internal API
+    Configure training session. Define adaptive hyperparameter mechanisms here.
+
+    Inputs: sess_id (str) Session ID
+    '''
+    def configure(self, sess_id):
+
+        sess = json.loads(self.cache.get(sess_id))
+        sess['hyperparameters'] = {"batch_size": self.batch_size, "local_epochs": self.local_epochs, 
+                                   "cuda": self.cuda, "drop_last": self.drop_last, "log_freq": self.log_freq, 
+                                   "save": self.save, "seed": self.seed, "shuffle": self.shuffle,
+                                   "optimizer": {"name": self.optimizer, "lr":random(), "momentum": 0, 
+                                                 "weight_decay": 0, "dampening": 0, "nesterov": False}}
+        self.cache.set(sess_id, json.dumps(sess))
+
+
+    '''
+    Internal API
     Async establish clique and synchronize parameters
     '''
     def train_hyperedge(self):
         start = time()
         log, log_path = utils.log(self.me['alias'], self.log_dir, '{}-origin-{}'.format(self.me['id'], utils.get_date()), level=self.log_level)
         sess_id = ''
+        self.log.debug('log_path: {}'.format(log_path))
 
         while len(sess_id) == 0:
             # establish clique
@@ -497,8 +517,6 @@ class ParameterServer(object):
             log, log_path = utils.log(self.me['alias'], self.log_dir, 'train-{}'.format(sess_id))
 
         log.info('training...')
-        optimizer = {'optimizer': self.optimizer, 
-                     'parameters': {'momentum': 0, 'weight_decay': 0, 'dampening': 0, 'nesterov': False}}
 
         # Setup variables for sharing gradients
         sess = json.loads(self.cache.get(sess_id))
@@ -506,10 +524,8 @@ class ParameterServer(object):
         # Each session should create its own model
         nn = net.DevNet(seed=self.seed, log=log)
         nn.update_parameters(sess['parameters'])
-        conf = (self.batch_size, self.cache, self.dataset, self.device, self.local_epochs, log, self.lr, nn, 
-                optimizer, sess_id, self.cuda, self.drop_last, self.log_freq, self.save, self.seed, self.shuffle)
 
-        self.local_train(sess_id, nn, conf, async=self.async_local, log=log)
+        self.local_train(sess_id, nn, async=self.async_local, log=log)
 
         # Update session model rank
         sess = json.loads(self.cache.get(sess_id))
@@ -518,8 +534,10 @@ class ParameterServer(object):
         # Multi-step gradient between synchronized parameters and locally updated parameters
         multistep = nn.multistep_grad(sess['parameters'], k=self.sparsity, sparsify=True)
         
+        log.debug('use_allreduce: {}'.format(self.use_allreduce))
         if self.use_allreduce:
             self.allreduce(sess_id, sess, multistep, sess['train_size'], log=log)
+            log.debug('allreduce complete')
 
             # Final validation
             # Retrieve gradients in session shared by peers
@@ -528,6 +546,7 @@ class ParameterServer(object):
             nn.add_batched_coordinates(sess['gradients'][0], lr=self.lr, avg=sess['train_size'])
 
         # Validate model accuracy
+        conf = (self.cache, self.dataset, self.device, log, nn, sess_id)
         sess['accuracy'] = Train(conf).validate()
         sess['done'] = True
         self.cache.set(sess_id, json.dumps(sess))
@@ -545,11 +564,13 @@ class ParameterServer(object):
 
     Input:  sess_id (string)           Session id
             nn      (nn.Module)        Neural network
-            conf    (Tuple)            Tuple containing training variables
+            async   (bool, optional)   True if using Hogwild! for local training
             log     (Logger, optional) Session log
     Output: share   (dict)             Dictionary containing accuracy, validation size, and training size
     '''
-    def local_train(self, sess_id, nn, conf, async=False, log=None):
+    def local_train(self, sess_id, nn, async=False, log=None):
+        self.configure(sess_id)
+        conf = (self.cache, self.dataset, self.device, log, nn, sess_id)
         processes = []
         start_time = time()
 
@@ -617,7 +638,7 @@ class ParameterServer(object):
     def init_session(self, log=None, log_path=''):
         ok = False
         sess_id = self.get_id()
-        sess = {"id": sess_id, "me": self.me}
+        sess = {"id": sess_id, "me": self.me, "allreduce": 0}
         resp = []
 
         peers = [x for x in self.establish_clique(sess, log=log) if len(x) > 0]
@@ -631,19 +652,15 @@ class ParameterServer(object):
         # and to get an initial score
         # Refactor this code and fix
         # ==============================
-        optimizer = {'optimizer': self.optimizer, 
-                     'parameters': {'momentum': 0, 'weight_decay': 0, 'dampening': 0, 'nesterov': False}}
-        
         nn = net.DevNet(seed=self.seed, log=log)
         local_sess = json.loads(self.cache.get('best'))
         local_sess['done'] = False
         nn.update_parameters(local_sess["parameters"])
         self.cache.set(sess_id, json.dumps(local_sess))
 
-        conf = (self.batch_size, self.cache, self.dataset, self.device, self.local_epochs, log, self.lr, nn, 
-                optimizer, sess_id, self.cuda, self.drop_last, self.log_freq, self.save, self.seed, self.shuffle)
-        self.local_train(sess_id, nn, conf, async=self.async_local, log=log)
+        self.local_train(sess_id, nn, async=self.async_local, log=log)
 
+        conf = (self.cache, self.dataset, self.device, log, nn, sess_id)
         local_sess = json.loads(self.cache.get(sess_id))
         local_sess["accuracy"] = Train(conf).validate()
 
@@ -905,21 +922,28 @@ class ParameterServer(object):
         try:
             for send_to in sess['party']:
                 log.info('sending to {}:{} sess_id: {}'.format(send_to['host'], send_to['port'], sess_id))
-                Thread(target=self.pc.psend, 
-                       args=(send_to['host'], send_to['port'], 
-                             {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
+                Thread(target=self.pc.psend, args=(send_to['host'], send_to['port'], 
+                       {"api": "share_grad", "args": [sess_id, self.me['alias'], gradients, sample_size]})).start()
         except KeyError as e:
             log.error('error: {}, keys: {}'.format(e, sess.keys()))
+        
+        # Check if share_grad was called. Delete after debugging.
+        sess = json.loads(self.cache.get(sess_id))
+        sess['allreduce'] = 1
+        self.cache.set(sess_id, json.dumps(sess))
+
+        log.debug('allreduce barrier')
 
         # Wait until all peers have shared their gradients
         # Remove this barrier to make hyperedges asynchronous
         while 1:
             sess = json.loads(self.cache.get(sess_id))
-            share_count = sess['share_count']
-
-            if int(share_count) == len(sess['party']): break
-            if int(share_count) > len(sess['party']):
-                log.error('share count ({}) cannot be greater than total party size ({})'.format(int(share_count), len(sess['party'])))
+            share_count = int(sess['share_count'])
+            party_size = len(sess['party'])
+            log.debug('waiting for sess_id: {}, host: {}, share_count: {}, party_size: {}'.format(sess_id, [s['host'] for s in sess['party']], share_count, party_size))
+            if share_count == party_size: break
+            if share_count > party_size:
+                log.error('share count ({}) cannot be greater than total party size ({})'.format(share_count, len(sess['party'])))
             sleep(random())
 
         log.info('done sync barrier')
@@ -1000,7 +1024,7 @@ class ParameterServer(object):
                 me['accuracy'] = record['accuracy']
                 log.debug('initiating with best: {}'.format(me['accuracy']))
 
-                self.cache.set(sess_id, json.dumps({"id": sess_id, "log": log_path,
+                self.cache.set(sess_id, json.dumps({"id": sess_id, "allreduce": 0, "log": log_path,
                                                      "share_train_sizes": 0, "share_count": 0, 
                                                      "gradients": [], "done": False, "type": 0}))
                 return me
@@ -1037,12 +1061,12 @@ class ParameterServer(object):
         if len(parameters) == 0:
             # If my parameters do not have the best validation accuracy
             best_params = None
-            sess = {}
 
             if best['host'] == self.me['host']:
                 with self.best_lock:
                     sess = json.loads(self.cache.get('best'))
                     sess["party"] = peers
+                    sess['allreduce'] = 2
                     parameters = sess["parameters"]
                     log.debug('synchronizing with my best: {}'.format(sess['accuracy']))
             else:
@@ -1055,13 +1079,13 @@ class ParameterServer(object):
 
                 ok = True
                 parameters = resp[0]
-                sess = {"parameters": parameters, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
+                sess = {"parameters": parameters, "allreduce": 3, "accuracy": resp[1], "val_size": 0, "train_size": 0, "party": peers}
 
             sess.update(json.loads(self.cache.get(sess_id)))
             ok = self.cache.set(sess_id, json.dumps(sess))
         else:
             # Else parameters were explicitely given, so update with those
-            ok, sess = self.extend_model(sess_id, {"accuracy": accuracy, "parameters": parameters, "party": peers}, log=log)
+            ok, sess = self.extend_model(sess_id, {"accuracy": accuracy, "allreduce": 4, "parameters": parameters, "party": peers}, log=log)
 
         try:
             log.debug('party: {}'.format(sess['party']))
@@ -1115,26 +1139,26 @@ class ParameterServer(object):
     '''
     def share_grad(self, sess_id, sender, gradients, samples):
         if not self.cache.exists(sess_id):
-            print 'sessDNE sess_id: {}'.format(sess_id)
+            raise Exception('sessDNE sess_id: {}'.format(sess_id))
             return False
 
         sess = json.loads(self.cache.get(sess_id))
+        log, log_path = utils.log(self.me['alias'], self.log_dir, sess["log"])
 
-        # Get log
         try:
-            log, log_path = utils.log(self.me['alias'], self.log_dir, sess["log"])
-
             sess['share_count'] = 1 + int(sess['share_count'])
             sess['gradients'].append(gradients)
             sess['share_train_sizes'] = samples + int(sess['share_train_sizes'])
             self.cache.set(sess_id, json.dumps(sess))
+            log.debug('sess_id: {} me: {}'.format(sess_id, self.me['host']))
         except KeyError as e:
-            self.log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
+            log.critical('KeyError: {}, sess: {}, sess_id: {}, gradients: {}'.format(e, sess, sess_id, gradients))
             return 'invalid'
         except Exception as e:
-            raise Exception('Unexpected error: {}'.format(e))
+            log.critical('Unexpected error: {}'.format(e))
             return 'invalid'
 
+        log.debug('done share_grad()')
         return True
 
 
