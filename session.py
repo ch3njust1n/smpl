@@ -9,12 +9,12 @@
 '''
 
 from __future__ import division
-import redis, ujson, argparse, sys, os, subprocess
+import redis, json, argparse, sys, os
 from pprint import pprint
 
 class ToolBox(object):
 	def __init__(self, args):
-		self.cache = redis.StrictRedis(host=args.host, port=args.port, db=args.db)
+		self.cache = redis.StrictRedis(host=args.host, port=args.port, db=args.database)
 
 
 	'''
@@ -29,7 +29,7 @@ class ToolBox(object):
 		if not self.cache.exists(var):
 			return 'key dne: {}'.format(var)
 		else:
-			return ujson.loads(self.cache.get(var))
+			return json.loads(self.cache.get(var))
 
 
 	'''
@@ -67,9 +67,12 @@ class ToolBox(object):
 	Aggregate logs from peers
 	'''
 	def pull_logs(self):
-		os.system('chmod +x ./logs/pull.sh')
-		log_dir = os.path.join(os.getcwd(), 'logs', 'pull.sh')
-		subprocess.call(log_dir, shell=True)
+		ssh_key = '~/.ssh/smpl-0.pem'
+		with open('distributed/config/party.json', 'r') as party_conf:
+			party = json.load(party_conf)
+			for p in party:
+				file = 'ubuntu@{}:/home/ubuntu/smpl/logs/*.log'.format(p['host'])
+				os.system(' '.join(['scp', '-i', ssh_key, file, '/home/ubuntu/smpl/logs/']))
 
 
 	'''
